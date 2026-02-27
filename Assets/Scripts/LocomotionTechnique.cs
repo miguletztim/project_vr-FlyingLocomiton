@@ -9,13 +9,11 @@ public class LocomotionTechnique : MonoBehaviour
     public OVRInput.Controller rightController;
     public GameObject hmd;
 
-    public float gravity = -9.81f;  // Gravity
-    public float collisionRadius = 0.2f;  // Collision radius for SphereCast
     private readonly float maxVelocity = 10f;
 
     private Vector3 prevLeftPos;
     private Vector3 prevRightPos;
-    private Vector3 velocityPerSecond;
+    private Vector3 currentVelocityPerSecond;
 
     private Logger.Logger logger;
 
@@ -44,7 +42,6 @@ public class LocomotionTechnique : MonoBehaviour
         prevRightPos = OVRInput.GetLocalControllerPosition(rightController);
     }
 
-
     void Update()
     {
         // Controller-Positionen abrufen
@@ -57,11 +54,11 @@ public class LocomotionTechnique : MonoBehaviour
 
         if (currentMovingMethod == MovingMethod.Fly)
         {
-            Fly(leftControllerPosition, rightControllerPosition);
+            Fly(leftControllerPosition, rightControllerPosition, currentVelocityPerSecond);
         }
         else
         {
-            velocityPerSecond = Vector3.zero;
+            currentVelocityPerSecond = Vector3.zero;
             transform.rotation = Quaternion.Euler(0f, transform.rotation.eulerAngles.y, 0f);
             Walk();
         }
@@ -139,176 +136,189 @@ public class LocomotionTechnique : MonoBehaviour
         }
     }
 
-    private void Fly(Vector3 leftControllerPosition, Vector3 rightControllerPosition)
+    private void Fly(Vector3 leftControllerPosition, Vector3 rightControllerPosition, Vector3 velocityPerSecond)
     {
         // Berechne Geschwindigkeit der Controller
-
-        Vector3 flapStrength = CalculateControllerVelocity(leftControllerPosition, rightControllerPosition, out bool isFlapping);
-        logger.DebugLog($"Flap Strength: {flapStrength}");
-
-        // Apply Gravity
-        ApplyGravity();
-
-        float currentAngle = CalculateAngle(leftControllerPosition, rightControllerPosition);
-        if (isFlapping)
-        {
-            Flap(flapStrength);
-        }
-        else if (Mathf.Abs(currentAngle) < 0.3f)
-        {           
-            Glide();
-        }
-
-        // Caps Speed
-        velocityPerSecond.y = Mathf.Clamp(velocityPerSecond.y, Mathf.NegativeInfinity, -gravity/4f);
-        velocityPerSecond.x = Mathf.Clamp(velocityPerSecond.x, -maxVelocity, maxVelocity);
-        velocityPerSecond.z = Mathf.Clamp(velocityPerSecond.z, -maxVelocity, maxVelocity);
-
-        logger.DebugLog($"Velocity: {velocityPerSecond}");
-
-        Vector3 forwardDirection = CalculateForwardDirection(leftControllerPosition, rightControllerPosition);
-        transform.rotation = Quaternion.Euler(0f, CalculateYaw(currentAngle, velocityPerSecond), 0f) * CalculateRoll(currentAngle, forwardDirection);
-        UpdateMovement();
-    }
-
-    private void ApplyGravity()
-    {
-        velocityPerSecond.y += gravity * Time.deltaTime;
-    }
-
-
-    private void Flap(Vector3 flapStrength)
-    {
-        float maxHeight = 30f;
-        
-        velocityPerSecond.y += flapStrength.y * Mathf.Clamp(1-transform.position.y/maxHeight, 0f, 1f);
-        velocityPerSecond.x += flapStrength.x;
-        velocityPerSecond.z += flapStrength.z;
-    }
-
-
-    private void Glide()
-    {
-        float glideFallSpeedPerSecond = -1f;
-        float glideSmoothness = Time.deltaTime;
-
-        if (velocityPerSecond.y > glideFallSpeedPerSecond)
-        {
-            return;
-        }
-
-        logger.DebugLog($"Vertical Velocity before glide: {velocityPerSecond.y}");
-        
-        velocityPerSecond.y -= glideSmoothness * velocityPerSecond.y;
-        if(velocityPerSecond.y > glideFallSpeedPerSecond)
-        {
-            velocityPerSecond.y = glideFallSpeedPerSecond;
-        }
-        
-        logger.DebugLog($"Vertical Velocity after glide: {velocityPerSecond.y}");
-    }
-
-    private Vector3 CalculateControllerVelocity(Vector3 leftControllerPosition, Vector3 rightControllerPosition, out bool isFlapping)
-    {
         Vector3 leftControllerOffset = leftControllerPosition - prevLeftPos;
         Vector3 rightControllerOffset = rightControllerPosition - prevRightPos;
 
         // Berechne die kombinierte Geschwindigkeit beider Flügel, skaliert mit der Zeit
         Vector3 controllerVelocity = -(leftControllerOffset + rightControllerOffset) / Time.deltaTime;
 
+        Vector3 flapStrength = CalculateFlapStrength(controllerVelocity, transform.position.y, out bool isFlapping);
+        logger.DebugLog($"Flap Strength: {flapStrength}");
+
+        // Apply Gravity
+        velocityPerSecond += CalculateGravity();
+
+        float angleArms = CalculateAngle(leftControllerPosition, rightControllerPosition);
+        logger.DebugLog($"Calculated Angle (radians): {angleArms}");
+
+        if (isFlapping)
+        {
+            velocityPerSecond += flapStrength;
+        }
+        else if (Mathf.Abs(angleArms) < 0.3f)
+        {
+            logger.DebugLog($"Vertical Velocity before glide: {velocityPerSecond.y}");
+            velocityPerSecond.y = CalculateFallingSpeedWhileGliding(velocityPerSecond.y);
+            logger.DebugLog($"Vertical Velocity after glide: {velocityPerSecond.y}");
+        }
+        
+        velocityPerSecond = CalculateClampedSpeed(velocityPerSecond, maxVelocity);
+
+        logger.DebugLog($"Velocity: {velocityPerSecond}");
+
+        transform.rotation = CalculateRotation(leftControllerPosition, rightControllerPosition, velocityPerSecond, angleArms);
+
+        // Berechne die Bewegungsrichtung
+        Vector3 movement = CalculateMovement(transform.rotation, velocityPerSecond);
+
+        // Kollisionslogik anwenden
+        if(IsColliding(transform.position, movement, out bool onGround)) {
+            movement = AdjustMovementOnCollision(velocityPerSecond, onGround);
+        }
+
+        logger.DebugLog($"Velocity before drag: {movement}");
+        movement = CalculateDrag(movement, onGround);
+        logger.DebugLog($"Velocity after drag: {movement}");
+
+        // Position aktualisieren
+        transform.position += movement;
+    }
+
+    private Quaternion CalculateRotation(Vector3 leftControllerPosition, Vector3 rightControllerPosition, Vector3 velocityPerSecond, float rotationAngle)
+    {
+        Vector3 forwardDirection = CalculateForwardDirection(leftControllerPosition, rightControllerPosition);
+        return Quaternion.Euler(0f, CalculateYaw(transform.eulerAngles.y, rotationAngle, velocityPerSecond, maxVelocity), 0f) * CalculateRoll(rotationAngle, forwardDirection);
+    }
+
+    internal static Vector3 CalculateClampedSpeed(Vector3 velocityPerSecond, float maxVelocity)
+    {
+        //velocityPerSecond.y = Mathf.Clamp(velocityPerSecond.y, Mathf.NegativeInfinity, -gravity / 4f);
+        velocityPerSecond.x = Mathf.Clamp(velocityPerSecond.x, -maxVelocity, maxVelocity);
+        velocityPerSecond.z = Mathf.Clamp(velocityPerSecond.z, -maxVelocity, maxVelocity);
+
+        return velocityPerSecond;
+    }
+
+    internal static Vector3 CalculateGravity()
+    {
+        float gravity = -9.81f;  // Gravity
+        return new(0, gravity * Time.deltaTime, 0);
+    }
+
+    internal static float CalculateFallingSpeedWhileGliding(float verticalVelocityPerSecond)
+    {
+        float glideFallSpeedPerSecond = -1f;
+        float glideSmoothness = Time.deltaTime;
+
+        if (verticalVelocityPerSecond > glideFallSpeedPerSecond)
+        {
+            return verticalVelocityPerSecond;
+        }
+
+        
+        verticalVelocityPerSecond -= glideSmoothness * verticalVelocityPerSecond;
+        if(verticalVelocityPerSecond > glideFallSpeedPerSecond)
+        {
+            verticalVelocityPerSecond = glideFallSpeedPerSecond;
+        }
+
+        return verticalVelocityPerSecond;
+    }
+
+    internal static Vector3 CalculateFlapStrength(Vector3 controllerVelocity, float positionY, out bool isFlapping)
+    {
+        float thresholdY = 3f;
+        float thresholdX = 10f;
+        float thresholdZ = 10f;
+        
         // Überprüfe, ob die Flügelbewegung die Schwellwerte überschreitet
-        isFlapping = controllerVelocity.y > 3f || Mathf.Abs(controllerVelocity.x) > 10 || -controllerVelocity.z > 10;
+        isFlapping = controllerVelocity.y > thresholdY || Mathf.Abs(controllerVelocity.x) > thresholdX || -controllerVelocity.z > thresholdZ;
+
+        float maxHeight = 30f;
+        
+        controllerVelocity.y *= Mathf.Clamp(1-(positionY/maxHeight), 0f, 1f);
 
         return controllerVelocity;
     }
 
-    private void UpdateMovement()
+    internal static Vector3 CalculateDrag(Vector3 movement, bool onGround)
     {
-        // Berechne die Bewegungsrichtung
-        Vector3 direction = GetMovementDirection();
+        float defaultDrag = 0.1f * Time.deltaTime;
+        float groundDrag = 2f * Time.deltaTime;
+        float dragPercentage = defaultDrag;
 
-        // Kollisionslogik anwenden
-        direction = HandleCollision(direction, out bool onGround);
+        // SphereCast durchführen, um Kollision zu prüfen
+        if (onGround)
+        {
+            dragPercentage = groundDrag;
+        }
 
-        ApplyDrag(onGround);
+        movement.x -= dragPercentage * movement.x;
+        movement.z -= dragPercentage * movement.z;
 
-        // Position aktualisieren
-        transform.position += direction;
+        return movement;
     }
 
-    private void ApplyDrag(bool onGround)
-{
-    float defaultDrag = 0.1f * Time.deltaTime;
-    float groundDrag = 2f * Time.deltaTime;
-    float dragPercentage = defaultDrag;
-
-    // SphereCast durchführen, um Kollision zu prüfen
-    if (onGround)
+    internal static Vector3 CalculateMovement(Quaternion orientation, Vector3 velocityPerSecond)
     {
-        dragPercentage = groundDrag;
-    }
-
-    logger.DebugLog($"Velocity before drag: {velocityPerSecond}");
-    velocityPerSecond.x -= dragPercentage * velocityPerSecond.x;
-    velocityPerSecond.z -= dragPercentage * velocityPerSecond.z;
-    logger.DebugLog($"Velocity after drag: {velocityPerSecond}");
-}
-
-    private Vector3 GetMovementDirection()
-    {
-        Vector3 currentSpeed = Vector3.up * velocityPerSecond.y + transform.forward * velocityPerSecond.z + transform.right * velocityPerSecond.x;
+        Vector3 currentSpeed = orientation * velocityPerSecond;
         // Berechnet die Bewegung unter Berücksichtigung der vertikalen und horizontalen Geschwindigkeiten
         return currentSpeed * Time.deltaTime;
     }
 
-    private Vector3 HandleCollision(Vector3 direction, out bool onGround)
+    internal static bool IsColliding(Vector3 position, Vector3 direction, out bool onGround)
     {
+        float collisionRadius = 0.2f;  // Collision radius for SphereCast
         onGround = false;
-        float maxSlopeAngle = 45f; // Alles über 45° gilt als Wand, nicht als Boden
 
-        logger.DebugLog("HandleCollision direction:" + direction);
+        bool isColliding = Physics.SphereCast(position, collisionRadius, direction.normalized, out RaycastHit hit, direction.magnitude);
 
-        // SphereCast durchführen
-        if (Physics.SphereCast(transform.position, collisionRadius, direction.normalized, out RaycastHit hit, direction.magnitude))
+        if(isColliding)
         {
-            // 1. Logik: Ist die getroffene Fläche flach genug?
-            // Berechne den Winkel zwischen dem "Up"-Vektor und der Normalen der getroffenen Fläche
-            float angle = Vector3.Angle(Vector3.up, hit.normal);
-            
-            // Wenn der Winkel klein genug ist, ist es der Boden
-            onGround = angle <= maxSlopeAngle;
-
-            logger.DebugLog($"Hit Angle: {angle} | onGround: {onGround}");
-
-            // 2. Bewegung anpassen
-            // Vertikale Geschwindigkeit bei jeder Kollision stoppen
-            velocityPerSecond.y = 0f;
-            direction = velocityPerSecond.z * Time.deltaTime * transform.forward + velocityPerSecond.x * Time.deltaTime * transform.right;
-
-            // Wenn der Treffer kein Boden ist (also eine steile Wand oder Decke), Abprall-Logik
-            if (!onGround)
-            {
-                direction = -transform.forward;
-                velocityPerSecond.y = 0f;
-            }
+            onGround = IsGrounded(hit.normal);
         }
+
+        return isColliding;
+    }
+
+    internal static bool IsGrounded(Vector3 hitNormal)
+    {
+        float maxSlopeAngle = 45f; 
+        float angle = Vector3.Angle(Vector3.up, hitNormal);
         
+        return angle <= maxSlopeAngle;
+    }
+
+    internal static Vector3 AdjustMovementOnCollision(Vector3 direction, bool isGrounded)
+    {
+        // Vertikale Geschwindigkeit bei jeder Kollision stoppen
+        direction.y = 0f;
+
+        // Abprall-Logik, falls es eine Wand/Decke ist
+        if (!isGrounded)
+        {
+            Vector3 horizontalDir = new(direction.x, 0f, direction.z);
+            direction = -horizontalDir.normalized;
+        }
+
         return direction;
     }
 
-    private float CalculateAngle(Vector3 leftPos, Vector3 rightPos)
+    internal static float CalculateAngle(Vector3 leftPos, Vector3 rightPos)
     {
         // Differenz berechnen
         Vector3 direction = leftPos - rightPos;
 
         // Winkel berechnen (in Radiant)
         float angle = Mathf.Atan2(direction.y, Mathf.Sqrt(direction.x * direction.x + direction.z * direction.z));
-        logger.DebugLog($"Calculated Angle (radians): {angle}");
 
         return angle;
     }
 
-    private float CalculateYaw(float radAngle, Vector3 velocity)
+    internal static float CalculateYaw(float currentYaw, float radAngle, Vector3 velocity, float maxVelocity)
     {
         const float minAngleToRotate = 5f;
         float maxRotationSpeed = 110f * Time.deltaTime;
@@ -316,7 +326,6 @@ public class LocomotionTechnique : MonoBehaviour
 
         float angleInDegrees = radAngle * Mathf.Rad2Deg;
 
-        float targetYaw = transform.eulerAngles.y;
         if (Math.Abs(angleInDegrees) > minAngleToRotate)
         {            
             float rotationSpeed = radAngle * maxRotationSpeed * (Mathf.Abs(velocity.z) + Mathf.Abs(velocity.x)) / maxVelocity;
@@ -327,13 +336,13 @@ public class LocomotionTechnique : MonoBehaviour
                 rotationSpeed = Mathf.Sign(rotationSpeed) * minRotationSpeed;
             }
 
-            targetYaw += rotationSpeed;
+            currentYaw += rotationSpeed;
         }
 
-        return targetYaw;
+        return currentYaw;
     }
     
-    private Quaternion CalculateRoll(float radAngle, Vector3 forwardDirection) {
+    internal static Quaternion CalculateRoll(float radAngle, Vector3 forwardDirection) {
         float angleInDegrees = radAngle * Mathf.Rad2Deg;
         
         // Normalisiere die horizontale Komponente der forward direction
@@ -345,13 +354,11 @@ public class LocomotionTechnique : MonoBehaviour
         
         Quaternion tilt = Quaternion.Euler(pitchTilt, 0f, -rollTilt);
 
-        logger.DebugLog($"Forward Direction: {forwardDirection}, Horizontal Dir: {horizontalDir}, Angle in Degrees: {angleInDegrees}, Pitch: {pitchTilt}, Roll: {rollTilt}, Calculated Roll: {tilt.eulerAngles}");
-
         return tilt;
     }
 
 
-    private static Vector3 CalculateForwardDirection(Vector3 leftPos, Vector3 rightPos)
+    internal static Vector3 CalculateForwardDirection(Vector3 leftPos, Vector3 rightPos)
     {
         // 1. Vektor von links nach rechts (Right Vector)
         Vector3 rightVector = (rightPos - leftPos).normalized;
