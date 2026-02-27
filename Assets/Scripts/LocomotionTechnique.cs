@@ -15,8 +15,7 @@ public class LocomotionTechnique : MonoBehaviour
 
     private Vector3 prevLeftPos;
     private Vector3 prevRightPos;
-    private float verticalVelocityPerSecond;
-    float forwardVelocityPerSecond;
+    private Vector3 velocityPerSecond;
 
     private Logger.Logger logger;
 
@@ -49,25 +48,27 @@ public class LocomotionTechnique : MonoBehaviour
     void Update()
     {
         // Controller-Positionen abrufen
-        Vector3 leftPos = OVRInput.GetLocalControllerPosition(leftController);
-        Vector3 rightPos = OVRInput.GetLocalControllerPosition(rightController);
+        Vector3 leftControllerPosition = OVRInput.GetLocalControllerPosition(leftController);
+        Vector3 rightControllerPosition = OVRInput.GetLocalControllerPosition(rightController);
 
-        logger.DebugLog($"Left Position: {leftPos}, Right Position: {rightPos}");
+        logger.DebugLog($"Left Position: {leftControllerPosition}, Right Position: {rightControllerPosition}");
 
         SwitchMoving();
 
         if (currentMovingMethod == MovingMethod.Fly)
         {
-            Fly(leftPos, rightPos);
+            Fly(leftControllerPosition, rightControllerPosition);
         }
         else
         {
+            velocityPerSecond = Vector3.zero;
+            transform.rotation = Quaternion.Euler(0f, transform.rotation.eulerAngles.y, 0f);
             Walk();
         }
 
         // Speichere die Positionen für die nächste Berechnung
-        prevLeftPos = leftPos;
-        prevRightPos = rightPos;
+        prevLeftPos = leftControllerPosition;
+        prevRightPos = rightControllerPosition;
 
         ////////////////////////////////////////////////////////////////////////////////
         // These are for the game mechanism.
@@ -138,20 +139,17 @@ public class LocomotionTechnique : MonoBehaviour
         }
     }
 
-    private void Fly(Vector3 leftPos, Vector3 rightPos)
+    private void Fly(Vector3 leftControllerPosition, Vector3 rightControllerPosition)
     {
         // Berechne Geschwindigkeit der Controller
-        Vector3 leftOffset = leftPos - prevLeftPos;
-        Vector3 rightOffset = rightPos - prevRightPos;
 
-
-        bool isFlapping = TryCalculateFlapStrength(leftOffset, rightOffset, out Vector3 flapStrength);
+        Vector3 flapStrength = CalculateControllerVelocity(leftControllerPosition, rightControllerPosition, out bool isFlapping);
         logger.DebugLog($"Flap Strength: {flapStrength}");
 
         // Apply Gravity
         ApplyGravity();
 
-        float currentAngle = CalculateAngle(leftPos, rightPos);
+        float currentAngle = CalculateAngle(leftControllerPosition, rightControllerPosition);
         if (isFlapping)
         {
             Flap(flapStrength);
@@ -162,19 +160,20 @@ public class LocomotionTechnique : MonoBehaviour
         }
 
         // Caps Speed
-        verticalVelocityPerSecond = Mathf.Clamp(verticalVelocityPerSecond, Mathf.NegativeInfinity, -gravity/4f);
-        forwardVelocityPerSecond = Mathf.Clamp(forwardVelocityPerSecond, -maxVelocity, maxVelocity);
+        velocityPerSecond.y = Mathf.Clamp(velocityPerSecond.y, Mathf.NegativeInfinity, -gravity/4f);
+        velocityPerSecond.x = Mathf.Clamp(velocityPerSecond.x, -maxVelocity, maxVelocity);
+        velocityPerSecond.z = Mathf.Clamp(velocityPerSecond.z, -maxVelocity, maxVelocity);
 
-        logger.DebugLog($"Vertical Velocity: {verticalVelocityPerSecond}");
-        logger.DebugLog($"Forward Velocity: {forwardVelocityPerSecond}");
+        logger.DebugLog($"Velocity: {velocityPerSecond}");
 
-        transform.rotation = CalculateRotation(currentAngle, forwardVelocityPerSecond);
+        Vector3 forwardDirection = CalculateForwardDirection(leftControllerPosition, rightControllerPosition);
+        transform.rotation = Quaternion.Euler(0f, CalculateYaw(currentAngle, velocityPerSecond), 0f) * CalculateRoll(currentAngle, forwardDirection);
         UpdateMovement();
     }
 
     private void ApplyGravity()
     {
-        verticalVelocityPerSecond += gravity * Time.deltaTime;
+        velocityPerSecond.y += gravity * Time.deltaTime;
     }
 
 
@@ -182,9 +181,9 @@ public class LocomotionTechnique : MonoBehaviour
     {
         float maxHeight = 30f;
         
-        verticalVelocityPerSecond += flapStrength.y * Mathf.Clamp(1-transform.position.y/maxHeight, 0f, 1f);
-
-        forwardVelocityPerSecond += flapStrength.z;
+        velocityPerSecond.y += flapStrength.y * Mathf.Clamp(1-transform.position.y/maxHeight, 0f, 1f);
+        velocityPerSecond.x += flapStrength.x;
+        velocityPerSecond.z += flapStrength.z;
     }
 
 
@@ -193,29 +192,34 @@ public class LocomotionTechnique : MonoBehaviour
         float glideFallSpeedPerSecond = -1f;
         float glideSmoothness = Time.deltaTime;
 
-        if (verticalVelocityPerSecond > glideFallSpeedPerSecond)
+        if (velocityPerSecond.y > glideFallSpeedPerSecond)
         {
             return;
         }
 
-        logger.DebugLog($"Vertical Velocity before glide: {verticalVelocityPerSecond}");
+        logger.DebugLog($"Vertical Velocity before glide: {velocityPerSecond.y}");
         
-        verticalVelocityPerSecond -= glideSmoothness * verticalVelocityPerSecond;
-        if(verticalVelocityPerSecond > glideFallSpeedPerSecond)
+        velocityPerSecond.y -= glideSmoothness * velocityPerSecond.y;
+        if(velocityPerSecond.y > glideFallSpeedPerSecond)
         {
-            verticalVelocityPerSecond = glideFallSpeedPerSecond;
+            velocityPerSecond.y = glideFallSpeedPerSecond;
         }
         
-        logger.DebugLog($"Vertical Velocity after glide: {verticalVelocityPerSecond}");
+        logger.DebugLog($"Vertical Velocity after glide: {velocityPerSecond.y}");
     }
 
-    private static bool TryCalculateFlapStrength(Vector3 leftOffset, Vector3 rightOffset, out Vector3 flapStrength)
+    private Vector3 CalculateControllerVelocity(Vector3 leftControllerPosition, Vector3 rightControllerPosition, out bool isFlapping)
     {
+        Vector3 leftControllerOffset = leftControllerPosition - prevLeftPos;
+        Vector3 rightControllerOffset = rightControllerPosition - prevRightPos;
+
         // Berechne die kombinierte Geschwindigkeit beider Flügel, skaliert mit der Zeit
-        flapStrength = -(leftOffset + rightOffset) / Time.deltaTime;
+        Vector3 controllerVelocity = -(leftControllerOffset + rightControllerOffset) / Time.deltaTime;
 
         // Überprüfe, ob die Flügelbewegung die Schwellwerte überschreitet
-        return flapStrength.y > 3f || -flapStrength.z > 10;
+        isFlapping = controllerVelocity.y > 3f || Mathf.Abs(controllerVelocity.x) > 10 || -controllerVelocity.z > 10;
+
+        return controllerVelocity;
     }
 
     private void UpdateMovement()
@@ -244,14 +248,15 @@ public class LocomotionTechnique : MonoBehaviour
         dragPercentage = groundDrag;
     }
 
-    logger.DebugLog($"Forward Velocity before drag: {forwardVelocityPerSecond}");
-    forwardVelocityPerSecond -= dragPercentage * forwardVelocityPerSecond;
-    logger.DebugLog($"Forward Velocity after drag: {forwardVelocityPerSecond}");
+    logger.DebugLog($"Velocity before drag: {velocityPerSecond}");
+    velocityPerSecond.x -= dragPercentage * velocityPerSecond.x;
+    velocityPerSecond.z -= dragPercentage * velocityPerSecond.z;
+    logger.DebugLog($"Velocity after drag: {velocityPerSecond}");
 }
 
     private Vector3 GetMovementDirection()
     {
-        Vector3 currentSpeed = Vector3.up * verticalVelocityPerSecond + transform.forward * forwardVelocityPerSecond;
+        Vector3 currentSpeed = Vector3.up * velocityPerSecond.y + transform.forward * velocityPerSecond.z + transform.right * velocityPerSecond.x;
         // Berechnet die Bewegung unter Berücksichtigung der vertikalen und horizontalen Geschwindigkeiten
         return currentSpeed * Time.deltaTime;
     }
@@ -277,14 +282,14 @@ public class LocomotionTechnique : MonoBehaviour
 
             // 2. Bewegung anpassen
             // Vertikale Geschwindigkeit bei jeder Kollision stoppen
-            verticalVelocityPerSecond = 0f;
-            direction = forwardVelocityPerSecond * Time.deltaTime * transform.forward;
+            velocityPerSecond.y = 0f;
+            direction = velocityPerSecond.z * Time.deltaTime * transform.forward + velocityPerSecond.x * Time.deltaTime * transform.right;
 
             // Wenn der Treffer kein Boden ist (also eine steile Wand oder Decke), Abprall-Logik
             if (!onGround)
             {
                 direction = -transform.forward;
-                verticalVelocityPerSecond = 0f;
+                velocityPerSecond.y = 0f;
             }
         }
         
@@ -303,22 +308,18 @@ public class LocomotionTechnique : MonoBehaviour
         return angle;
     }
 
-    private Quaternion CalculateRotation(float radAngle, float velocity)
+    private float CalculateYaw(float radAngle, Vector3 velocity)
     {
-        const float minAngleToRotate = 3f;
+        const float minAngleToRotate = 5f;
         float maxRotationSpeed = 110f * Time.deltaTime;
         float minRotationSpeed = 20f * Time.deltaTime;
 
         float angleInDegrees = radAngle * Mathf.Rad2Deg;
 
-        // 1. Wir nutzen NUR den aktuellen Transform-Yaw als Basis.
-        // Das HMD ignorieren wir hier für die Berechnung der Körper-Rotation,
-        // damit der Körper die volle Kontrolle behält.
-        float currentYaw = transform.eulerAngles.y;
-
+        float targetYaw = transform.eulerAngles.y;
         if (Math.Abs(angleInDegrees) > minAngleToRotate)
         {            
-            float rotationSpeed = radAngle * maxRotationSpeed * (Mathf.Abs(velocity) / maxVelocity);
+            float rotationSpeed = radAngle * maxRotationSpeed * (Mathf.Abs(velocity.z) + Mathf.Abs(velocity.x)) / maxVelocity;
             rotationSpeed = Mathf.Clamp(rotationSpeed, -maxRotationSpeed, maxRotationSpeed);
             
             if (Mathf.Abs(rotationSpeed) < minRotationSpeed)
@@ -326,16 +327,43 @@ public class LocomotionTechnique : MonoBehaviour
                 rotationSpeed = Mathf.Sign(rotationSpeed) * minRotationSpeed;
             }
 
-            // 2. Wir berechnen den neuen Yaw und wenden das Rollen (Z) an.
-            // Wir addieren die Drehung auf den aktuellen Stand auf.
-            float targetYaw = currentYaw + rotationSpeed;
-
-            // Wir geben eine Rotation zurück, die den Körper dreht UND neigt.
-            return Quaternion.Euler(0f, targetYaw, Mathf.Sign(velocity) * -angleInDegrees);
+            targetYaw += rotationSpeed;
         }
 
-        // Wenn keine Drehung stattfindet, halten wir den Körper gerade (Z = 0),
-        // behalten aber die aktuelle Y-Ausrichtung bei.
-        return Quaternion.Euler(0f, currentYaw, 0f);
+        return targetYaw;
+    }
+    
+    private Quaternion CalculateRoll(float radAngle, Vector3 forwardDirection) {
+        float angleInDegrees = radAngle * Mathf.Rad2Deg;
+        
+        // Normalisiere die horizontale Komponente der forward direction
+        Vector2 horizontalDir = new Vector2(forwardDirection.x, forwardDirection.z).normalized;
+        
+        // Berechne Pitch und Roll basierend auf der normalisierten Richtung
+        float pitchTilt = horizontalDir.y * angleInDegrees;  // Z-Komponente -> Pitch
+        float rollTilt = horizontalDir.x * angleInDegrees;   // X-Komponente -> Roll
+        
+        Quaternion tilt = Quaternion.Euler(pitchTilt, 0f, -rollTilt);
+
+        logger.DebugLog($"Forward Direction: {forwardDirection}, Horizontal Dir: {horizontalDir}, Angle in Degrees: {angleInDegrees}, Pitch: {pitchTilt}, Roll: {rollTilt}, Calculated Roll: {tilt.eulerAngles}");
+
+        return tilt;
+    }
+
+
+    private static Vector3 CalculateForwardDirection(Vector3 leftPos, Vector3 rightPos)
+    {
+        // 1. Vektor von links nach rechts (Right Vector)
+        Vector3 rightVector = (rightPos - leftPos).normalized;
+
+        rightVector.y = 0f; // Ignoriere vertikale Komponente für die Richtungsberechnung
+        
+        // 2. Up Vector (normalerweise Vector3.up, aber du kannst auch HMD.up verwenden)
+        Vector3 upVector = Vector3.up;
+        
+        // 3. Forward Vector = Cross Product von Right x Up
+        Vector3 forwardVector = Vector3.Cross(rightVector, upVector).normalized;
+        
+        return forwardVector;
     }
 }
