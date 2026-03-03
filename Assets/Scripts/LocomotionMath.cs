@@ -25,8 +25,10 @@ public static class LocomotionMath
     /// </summary>
     public static Vector3 ClampSpeed(Vector3 velocity, float maxVelocity)
     {
+        float terminalFallVelocity = -76f;
+
         velocity.x = Mathf.Clamp(velocity.x, -maxVelocity, maxVelocity);
-        velocity.y = Mathf.Clamp(velocity.y, Mathf.NegativeInfinity, maxVelocity);
+        velocity.y = Mathf.Clamp(velocity.y, terminalFallVelocity, maxVelocity);
         velocity.z = Mathf.Clamp(velocity.z, -maxVelocity, maxVelocity);
         return velocity;
     }
@@ -39,6 +41,7 @@ public static class LocomotionMath
         float drag = onGround ? 2f * deltaTime : 0.1f * deltaTime;
 
         movement.x -= drag * movement.x;
+        movement.y -= drag * movement.y;
         movement.z -= drag * movement.z;
 
         return movement;
