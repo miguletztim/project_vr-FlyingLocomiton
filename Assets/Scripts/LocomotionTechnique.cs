@@ -59,6 +59,7 @@ public class LocomotionTechnique : MonoBehaviour
         Vector3 rightPos = OVRInput.GetLocalControllerPosition(rightController);
         float deltaTime = Time.deltaTime;
         
+        HardReset();
         ResetGliding();
         SwitchMovingMode();
 
@@ -86,6 +87,18 @@ public class LocomotionTechnique : MonoBehaviour
         if (OVRInput.GetDown(OVRInput.Button.PrimaryIndexTrigger, OVRInput.Controller.RTouch) && OVRInput.GetDown(OVRInput.Button.PrimaryIndexTrigger, OVRInput.Controller.LTouch))
         {
             maxHorizontalArmLength = 0f;
+        }
+    }
+
+    private void HardReset()
+    {
+        if (OVRInput.GetDown(OVRInput.Button.PrimaryHandTrigger, OVRInput.Controller.RTouch) && OVRInput.GetDown(OVRInput.Button.PrimaryHandTrigger, OVRInput.Controller.LTouch))
+        {
+            velocityPerSecond = Vector3.zero;
+            transform.position = Vector3.zero;
+            transform.rotation = Quaternion.identity;
+            maxHorizontalArmLength = 0f;
+            logger.DebugLog("Hard Reset Triggered: Position, Rotation, Velocity, and Max Horizontal Arm Length reset.");
         }
     }
 
