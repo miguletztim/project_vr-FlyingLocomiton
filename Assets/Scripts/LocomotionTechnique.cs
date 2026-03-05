@@ -14,24 +14,26 @@ public class LocomotionTechnique : MonoBehaviour
     public OVRInput.Controller rightController;
     public GameObject hmd;
 
-    private const float MaxVelocity = 10f;
-    private const float Gravity = -9.81f;
 
     private Vector3 previousLeftPos;
     private Vector3 previousRightPos;
-    private Vector3 currentVelocityPerSecond;
-
-    private float maxControllerDistance;
-
     private Logger.Logger logger;
 
-    private enum MovingMethod
+    // Custom constants for game mechanism.
+    private const float Gravity = -9.81f;
+    
+    public enum MovingMethod
     {
         Fly,
         Walk
     }
 
-    private MovingMethod currentMovingMethod = MovingMethod.Fly;
+
+    // Customizable variables for gliding and game mechanism.
+    public MovingMethod currentMovingMethod = MovingMethod.Fly;
+    public float maxControllerDistance = 0f;
+    public Vector3 currentVelocityPerSecond = Vector3.zero;
+    public const float MaxVelocityPerSecond = 10f;
 
 
     /////////////////////////////////////////////////////////
@@ -39,8 +41,6 @@ public class LocomotionTechnique : MonoBehaviour
     public ParkourCounter parkourCounter;
     public string stage;
     public SelectionTaskMeasure selectionTaskMeasure;
-
-
 
     void Start()
     {
