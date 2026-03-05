@@ -124,6 +124,51 @@ public static class LocomotionMath
         return Vector3.Cross(rightVector, Vector3.up).normalized;
     }
 
+    public static Quaternion CalculateOrientation(
+        float yawDegrees,
+        float armAngleRad,
+        Vector3 armForward,         // aus CalculateForwardDirection(leftPos, rightPos)
+        float maxRollDegrees = 35f)
+    {
+        Quaternion yawRotation = Quaternion.Euler(0f, yawDegrees, 0f);
+
+        // armForward in lokalen Raum der aktuellen Yaw-Rotation transformieren
+        // → damit ist Roll immer relativ zur Blickrichtung, nicht zur Weltachse
+        Vector3 localForward = Quaternion.Inverse(yawRotation) * armForward;
+
+        // Wie stark kippt der lokale Forward-Vektor seitlich?
+        // localForward.x = seitliche Komponente relativ zur Blickrichtung
+        float rollDeg = Mathf.Clamp(
+            -localForward.x * armAngleRad * Mathf.Rad2Deg,
+            -maxRollDegrees,
+            maxRollDegrees);
+
+        Quaternion rollRotation = Quaternion.Euler(0f, 0f, rollDeg);
+        return yawRotation * rollRotation;
+    }
+
+    public static void TestYawCalculation()
+    {
+        float currentYaw = 0f;
+        float armAngleRad = Mathf.PI / 6; // 30 degrees
+        Vector3 velocity = new Vector3(5f, 0f, 5f);
+        float maxVelocity = 10f;
+        float deltaTime = 0.02f; // 50 FPS
+
+        
+        for (int i = 0; i < 360; i++)
+        {
+            float newYaw = CalculateYaw(currentYaw, armAngleRad, velocity, maxVelocity, deltaTime);
+
+            Quaternion newRoll = CalculateRoll(armAngleRad, new Vector3(Mathf.Sin(newYaw * Mathf.Deg2Rad), 0f, Mathf.Cos(newYaw * Mathf.Deg2Rad)));
+            Debug.Log($"Frame {i + 1}: Current Yaw: {currentYaw} degrees, New Yaw: {newYaw} degrees, Calculated Roll: {newRoll} degrees");
+
+            currentYaw = newYaw;
+        }
+    }
+
+    
+
     /// <summary>
     /// Calculates yaw rotation based on arm angle and current velocity.
     /// </summary>
@@ -203,17 +248,35 @@ public static class LocomotionMath
     /// <summary>
     /// Calculates the maximum arm length for gliding and determines if the player is currently gliding.
     /// </summary>
-    public static bool CalculateIfGliding(Vector3 leftPos, Vector3 rightPos, ref float maxHorizontalArmLength)
+    public static bool CalculateIfGliding(float armAngleRadiant, float currentControllerDistance, ref float maxControllerDistance)
     {
-        float currentArmLength = Vector3.Distance(leftPos, rightPos);
+        // Define a percentage of the maximum controller distance that must be exceeded to count as gliding
+        float distanceThresholdPercentage = 0.9f;
 
-        bool isGliding = currentArmLength > maxHorizontalArmLength * 0.9f;
+        // Calculate the distance threshold based on the maximum controller distance and the defined percentage
+        float distanceThreshold = maxControllerDistance * distanceThresholdPercentage;
 
-        if (currentArmLength > maxHorizontalArmLength)
+        // Define an angle threshold in radians (e.g., 0.3 radians ≈ 17 degrees)
+        float angleThresholdRadiant = 0.3f;
+
+        // Update the maximum controller distance if the current distance exceeds it
+        if (currentControllerDistance > maxControllerDistance)
         {
-            maxHorizontalArmLength = currentArmLength;
+            maxControllerDistance = currentControllerDistance;
         }
 
-        return isGliding;
+        // Check if the current controller distance extends the threshold for gliding
+        bool validDistance = currentControllerDistance > distanceThreshold;
+
+        // Check if the arm angle is within the threshold range for gliding
+        bool validAngle = Mathf.Abs(armAngleRadiant) < angleThresholdRadiant;
+        
+        // The player is gliding if both the distance and angle conditions are met
+        return validDistance && validAngle;
+    }
+
+    public static float CalculateArmDistance(Vector3 leftPos, Vector3 rightPos)
+    {
+        return Vector3.Distance(leftPos, rightPos);
     }
 }

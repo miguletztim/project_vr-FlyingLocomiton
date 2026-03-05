@@ -19,9 +19,9 @@ public class LocomotionTechnique : MonoBehaviour
 
     private Vector3 previousLeftPos;
     private Vector3 previousRightPos;
-    private Vector3 velocityPerSecond;
+    private Vector3 currentVelocityPerSecond;
 
-    private float maxHorizontalArmLength;
+    private float maxControllerDistance;
 
     private Logger.Logger logger;
 
@@ -48,6 +48,33 @@ public class LocomotionTechnique : MonoBehaviour
 
         previousLeftPos = OVRInput.GetLocalControllerPosition(leftController);
         previousRightPos = OVRInput.GetLocalControllerPosition(rightController);
+
+        //TestYawCalculation();
+    }
+
+    public void TestYawCalculation()
+    {
+        float currentYaw;
+        float armAngleRad = Mathf.PI / 6;
+        Vector3 velocity = new Vector3(1f, 0f, 1f);
+        float maxVelocity = 10f;
+        float deltaTime = 1f;
+
+        // Outer loop to rotate 1 degree clockwise each iteration
+        for (int j = -360; j < 360; j++)
+        {
+            for (int i = -360; i < 360; i++)
+            {
+                currentYaw = i;
+                float yaw = LocomotionMath.CalculateYaw(currentYaw, armAngleRad, velocity, maxVelocity, deltaTime);
+
+                Vector3 forwardDirection = Quaternion.Euler(0, j, 0) * Vector3.forward; // Rotate forward direction by j degrees
+                Quaternion orientation = LocomotionMath.CalculateOrientation(yaw, armAngleRad, forwardDirection);
+                
+                float roll = Mathf.Atan2(orientation.eulerAngles.z, orientation.eulerAngles.x) * Mathf.Rad2Deg;
+                logger.DebugLog($"Iteration {i}: Current Yaw: {currentYaw}°, Calculated Yaw: {yaw}°, Orientation: {orientation.eulerAngles}, Roll: {roll}°");
+            }
+        }
     }
 
     void Update()
@@ -72,21 +99,26 @@ public class LocomotionTechnique : MonoBehaviour
         }
         else
         {
-            velocityPerSecond = Vector3.zero;
+            currentVelocityPerSecond = Vector3.zero;
             transform.rotation = Quaternion.Euler(0f, transform.eulerAngles.y, 0f);
         }
 
         previousLeftPos = leftPos;
         previousRightPos = rightPos;
 
-        logger.DebugLog($"Position: {transform.position}, Rotation: {transform.rotation.eulerAngles}, Velocity: {velocityPerSecond}");
+        logger.DebugLog($"Position: {transform.position}, Rotation: {transform.rotation.eulerAngles}, Velocity: {currentVelocityPerSecond}");
+
+        
+        ////////////////////////////////////////////////////////////////////////////////
+        // These are for the game mechanism.
+        ResetPosition();
     }
 
     private void ResetGliding()
     {
         if (OVRInput.GetDown(OVRInput.Button.PrimaryIndexTrigger, OVRInput.Controller.RTouch) && OVRInput.GetDown(OVRInput.Button.PrimaryIndexTrigger, OVRInput.Controller.LTouch))
         {
-            maxHorizontalArmLength = 0f;
+            maxControllerDistance = 0f;
         }
     }
 
@@ -94,11 +126,10 @@ public class LocomotionTechnique : MonoBehaviour
     {
         if (OVRInput.GetDown(OVRInput.Button.PrimaryHandTrigger, OVRInput.Controller.RTouch) && OVRInput.GetDown(OVRInput.Button.PrimaryHandTrigger, OVRInput.Controller.LTouch))
         {
-            velocityPerSecond = Vector3.zero;
+            currentVelocityPerSecond = Vector3.zero;
             transform.position = Vector3.zero;
-            transform.rotation = Quaternion.identity;
-            maxHorizontalArmLength = 0f;
-            logger.DebugLog("Hard Reset Triggered: Position, Rotation, Velocity, and Max Horizontal Arm Length reset.");
+            maxControllerDistance = 0f;
+            logger.DebugLog("Hard Reset Triggered: Position, Velocity, and Max Horizontal Arm Length reset.");
         }
     }
 
@@ -117,9 +148,7 @@ public class LocomotionTechnique : MonoBehaviour
         // ----------------------------
         // ARRANGE
         // ----------------------------
-        Vector3 leftOffset = leftPos - previousLeftPos;
-        Vector3 rightOffset = rightPos - previousRightPos;
-        Vector3 controllerVelocity = -(leftOffset + rightOffset) / deltaTime;
+        Vector3 controllerVelocity = CalculateCombinedControllerVelocity(leftPos, rightPos, deltaTime);
 
         // ----------------------------
         // ACT (PURE LOGIC)
@@ -134,37 +163,14 @@ public class LocomotionTechnique : MonoBehaviour
         float armAngle =
             LocomotionMath.CalculateArmAngle(leftPos, rightPos);
         logger.DebugLog($"Arm Angle: {armAngle * Mathf.Rad2Deg:F2} degrees");
-        
-        bool isGliding = LocomotionMath.CalculateIfGliding(leftPos, rightPos, ref maxHorizontalArmLength);
-        logger.DebugLog($"Max Horizontal Arm Length: {maxHorizontalArmLength}, Is Gliding: {isGliding}");
 
-        if (isFlapping)
-        {
-            velocityPerSecond += flapStrength;
-            logger.DebugLog($"Velocity after flap: {velocityPerSecond}");
-        }
-        else if (Mathf.Abs(armAngle) < 0.3f &&  isGliding)
-        {
-            velocityPerSecond.y =
-                LocomotionMath.CalculateGlideFallSpeed(
-                    velocityPerSecond.y,
-                    -1f,
-                    deltaTime);
-        }
-        
-        velocityPerSecond += LocomotionMath.ApplyGravity(Gravity, deltaTime);
-        logger.DebugLog($"Velocity after gravity: {velocityPerSecond}");
-
-        velocityPerSecond =
-            LocomotionMath.ClampSpeed(
-                velocityPerSecond,
-                MaxVelocity);
-        logger.DebugLog($"Clamped Velocity: {velocityPerSecond}");
+        currentVelocityPerSecond = CalculateVelocityPerSecond(leftPos, rightPos, deltaTime, flapStrength, isFlapping, armAngle, currentVelocityPerSecond);
 
 
         // ----------------------------
         // ROTATION
         // ----------------------------
+        /*
         Vector3 forward =
             LocomotionMath.CalculateForwardDirection(leftPos, rightPos);
         logger.DebugLog($"Forward Direction: {forward}");
@@ -184,7 +190,30 @@ public class LocomotionTechnique : MonoBehaviour
             Quaternion.Euler(0f, yaw, 0f) *
             LocomotionMath.CalculateRoll(armAngle, forward);
         logger.DebugLog($"New Rotation: {transform.rotation.eulerAngles}");
-        
+        */
+
+        // Yaw
+        float yaw =
+            LocomotionMath.CalculateYaw(
+            transform.eulerAngles.y,
+            armAngle,
+            currentVelocityPerSecond,
+            MaxVelocity,
+            deltaTime);
+
+        logger.DebugLog($"Calculated Yaw: {yaw} degrees");
+
+        logger.DebugLog($"Current Rotation: {transform.rotation.eulerAngles}");
+        logger.DebugLog($"Applying Rotation - Yaw: {yaw} degrees, Arm Angle: {armAngle * Mathf.Rad2Deg:F2} degrees");
+
+        // Yaw und Roll als unabhängige Achsen kombinieren
+        // Reihenfolge wichtig: erst Yaw (Y-Achse), dann Roll (Z-Achse)
+        Quaternion yawRotation = Quaternion.AngleAxis(yaw, Vector3.up);
+        Quaternion rollRotation = Quaternion.AngleAxis(armAngle * Mathf.Rad2Deg, Vector3.forward);
+
+        // Roll im lokalen Raum anwenden, Yaw im Weltraum
+        transform.rotation = yawRotation * rollRotation;
+
 
         // ----------------------------
         // MOVEMENT
@@ -192,7 +221,7 @@ public class LocomotionTechnique : MonoBehaviour
         Vector3 movement =
             LocomotionMath.CalculateMovement(
                 transform.rotation,
-                velocityPerSecond,
+                currentVelocityPerSecond,
                 deltaTime);
 
         // ----------------------------
@@ -210,7 +239,7 @@ public class LocomotionTechnique : MonoBehaviour
 
             movement =
                 LocomotionMath.ResolveCollision(
-                    velocityPerSecond,
+                    currentVelocityPerSecond,
                     grounded);
         }
 
@@ -226,10 +255,47 @@ public class LocomotionTechnique : MonoBehaviour
         // ASSERT (SIDE EFFECT)
         // ----------------------------
         transform.position += movement;
+    }
 
-        ////////////////////////////////////////////////////////////////////////////////
-        // These are for the game mechanism.
-        ResetPosition();
+    private Vector3 CalculateVelocityPerSecond(Vector3 leftPos, Vector3 rightPos, float deltaTime, Vector3 flapStrength, bool isFlapping, float armAngle, Vector3 currentVelocityPerSecond)
+    {
+        if (isFlapping)
+        {
+            currentVelocityPerSecond += flapStrength;
+            logger.DebugLog($"Velocity after flap: {currentVelocityPerSecond}");
+        }
+        else
+        {
+            float currentControllerDistance = LocomotionMath.CalculateArmDistance(leftPos, rightPos);
+            bool isGliding = LocomotionMath.CalculateIfGliding(armAngle, currentControllerDistance, ref maxControllerDistance);
+
+            logger.DebugLog($"Is Gliding: {isGliding}, Max Horizontal Arm Length: {maxControllerDistance}");
+
+            if(isGliding)
+            {
+                currentVelocityPerSecond.y =
+                LocomotionMath.CalculateGlideFallSpeed(
+                    currentVelocityPerSecond.y,
+                    -1f,
+                    deltaTime);
+            }
+        }
+
+        currentVelocityPerSecond += LocomotionMath.ApplyGravity(Gravity, deltaTime);
+        logger.DebugLog($"Velocity after gravity: {currentVelocityPerSecond}");
+
+        currentVelocityPerSecond =LocomotionMath.ClampSpeed(currentVelocityPerSecond, MaxVelocity);        
+        logger.DebugLog($"Clamped Velocity: {currentVelocityPerSecond}");
+
+        return currentVelocityPerSecond;
+    }
+
+    private Vector3 CalculateCombinedControllerVelocity(Vector3 leftPos, Vector3 rightPos, float deltaTime)
+    {
+        Vector3 leftOffset = leftPos - previousLeftPos;
+        Vector3 rightOffset = rightPos - previousRightPos;
+        Vector3 controllerVelocity = -(leftOffset + rightOffset) / deltaTime;
+        return controllerVelocity;
     }
 
     private void ResetPosition()
