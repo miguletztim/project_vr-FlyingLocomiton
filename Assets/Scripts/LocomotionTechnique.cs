@@ -48,33 +48,6 @@ public class LocomotionTechnique : MonoBehaviour
 
         previousLeftPos = OVRInput.GetLocalControllerPosition(leftController);
         previousRightPos = OVRInput.GetLocalControllerPosition(rightController);
-
-        //TestYawCalculation();
-    }
-
-    public void TestYawCalculation()
-    {
-        float currentYaw;
-        float armAngleRad = Mathf.PI / 6;
-        Vector3 velocity = new Vector3(1f, 0f, 1f);
-        float maxVelocity = 10f;
-        float deltaTime = 1f;
-
-        // Outer loop to rotate 1 degree clockwise each iteration
-        for (int j = -360; j < 360; j++)
-        {
-            for (int i = -360; i < 360; i++)
-            {
-                currentYaw = i;
-                float yaw = LocomotionMath.CalculateYaw(currentYaw, armAngleRad, velocity, maxVelocity, deltaTime);
-
-                Vector3 forwardDirection = Quaternion.Euler(0, j, 0) * Vector3.forward; // Rotate forward direction by j degrees
-                Quaternion orientation = LocomotionMath.CalculateOrientation(yaw, armAngleRad, forwardDirection);
-                
-                float roll = Mathf.Atan2(orientation.eulerAngles.z, orientation.eulerAngles.x) * Mathf.Rad2Deg;
-                logger.DebugLog($"Iteration {i}: Current Yaw: {currentYaw}°, Calculated Yaw: {yaw}°, Orientation: {orientation.eulerAngles}, Roll: {roll}°");
-            }
-        }
     }
 
     void Update()
