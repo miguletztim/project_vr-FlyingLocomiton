@@ -118,27 +118,7 @@ public class LocomotionTechnique : MonoBehaviour
 
     private void Fly(Vector3 leftPos, Vector3 rightPos, float deltaTime)
     {
-        // ----------------------------
-        // ARRANGE
-        // ----------------------------
-        Vector3 controllerVelocity = CalculateCombinedControllerVelocity(leftPos, rightPos, deltaTime);
-
-        // ----------------------------
-        // ACT (PURE LOGIC)
-        // ----------------------------
-        Vector3 flapStrength = LocomotionMath.CalculateFlapStrength(
-            controllerVelocity,
-            transform.position.y,
-            30f,
-            out bool isFlapping);
-        logger.DebugLog($"Controller Velocity: {controllerVelocity}, Flap Strength: {flapStrength}, Is Flapping: {isFlapping}");
-
-        float armAngle =
-            LocomotionMath.CalculateArmAngle(leftPos, rightPos);
-        logger.DebugLog($"Arm Angle: {armAngle * Mathf.Rad2Deg:F2} degrees");
-
-        currentVelocityPerSecond = CalculateVelocityPerSecond(leftPos, rightPos, deltaTime, flapStrength, isFlapping, armAngle, currentVelocityPerSecond);
-
+        currentVelocityPerSecond = ApplyControllerMovementToVelocityClamped(currentVelocityPerSecond, leftPos, rightPos, deltaTime);
 
         // ----------------------------
         // ROTATION
@@ -165,13 +145,16 @@ public class LocomotionTechnique : MonoBehaviour
         logger.DebugLog($"New Rotation: {transform.rotation.eulerAngles}");
         */
 
+        float armAngle = LocomotionMath.CalculateArmAngle(leftPos, rightPos);
+        logger.DebugLog($"Arm Angle: {armAngle * Mathf.Rad2Deg:F2} degrees");
+
+        float percentageOfMaxSpeed = LocomotionMath.CalculatePercentageOfMaxSpeed(currentVelocityPerSecond, MaxVelocityPerSecond);
+
         // Yaw
         float yaw =
-            LocomotionMath.CalculateYaw(
-            transform.eulerAngles.y,
+            LocomotionMath.CalculateAddedYaw(
             armAngle,
-            currentVelocityPerSecond,
-            MaxVelocity,
+            percentageOfMaxSpeed,
             deltaTime);
 
         logger.DebugLog($"Calculated Yaw: {yaw} degrees");
@@ -221,7 +204,7 @@ public class LocomotionTechnique : MonoBehaviour
                 movement,
                 false,
                 deltaTime);
-        
+
         logger.DebugLog($"Final Movement Vector: {movement}");
 
         // ----------------------------
@@ -230,35 +213,36 @@ public class LocomotionTechnique : MonoBehaviour
         transform.position += movement;
     }
 
-    private Vector3 CalculateVelocityPerSecond(Vector3 leftPos, Vector3 rightPos, float deltaTime, Vector3 flapStrength, bool isFlapping, float armAngle, Vector3 currentVelocityPerSecond)
+    private Vector3 ApplyControllerMovementToVelocityClamped(Vector3 currentVelocityPerSecond, Vector3 leftPos, Vector3 rightPos, float deltaTime)
     {
-        if (isFlapping)
-        {
-            currentVelocityPerSecond += flapStrength;
-            logger.DebugLog($"Velocity after flap: {currentVelocityPerSecond}");
-        }
-        else
-        {
-            float currentControllerDistance = LocomotionMath.CalculateArmDistance(leftPos, rightPos);
-            bool isGliding = LocomotionMath.CalculateIfGliding(armAngle, currentControllerDistance, ref maxControllerDistance);
+        Vector3 controllerVelocity = CalculateCombinedControllerVelocity(leftPos, rightPos, deltaTime);
 
-            logger.DebugLog($"Is Gliding: {isGliding}, Max Horizontal Arm Length: {maxControllerDistance}");
+        Vector3 flapStrength = LocomotionMath.CalculateFlapStrength(
+            controllerVelocity,
+            transform.position.y,
+            30f,
+            out bool isFlapping);
+        logger.DebugLog($"Controller Velocity: {controllerVelocity}, Flap Strength: {flapStrength}, Is Flapping: {isFlapping}");
 
-            if(isGliding)
-            {
-                currentVelocityPerSecond.y =
-                LocomotionMath.CalculateGlideFallSpeed(
-                    currentVelocityPerSecond.y,
-                    -1f,
-                    deltaTime);
-            }
-        }
+        float armAngle = LocomotionMath.CalculateArmAngle(leftPos, rightPos);
+        logger.DebugLog($"Arm Angle: {armAngle * Mathf.Rad2Deg:F2} degrees");
 
+        // Calculate if gliding and update maxControllerDistance
+        float currentControllerDistance = LocomotionMath.CalculateArmDistance(leftPos, rightPos);
+        bool isGliding = LocomotionMath.CalculateIfGliding(armAngle, currentControllerDistance, ref maxControllerDistance);
+        logger.DebugLog($"Is Gliding: {isGliding}, Max Horizontal Arm Length: {maxControllerDistance}");
+
+        // Update velocity based on flapping and gliding
+        currentVelocityPerSecond = LocomotionMath.CalculateVelocityPerSecond(currentVelocityPerSecond, flapStrength, isFlapping, isGliding, deltaTime);
+        logger.DebugLog($"Velocity Per Second after applying Flapping and Gliding: {currentVelocityPerSecond}");
+
+        // Apply gravity
         currentVelocityPerSecond += LocomotionMath.ApplyGravity(Gravity, deltaTime);
-        logger.DebugLog($"Velocity after gravity: {currentVelocityPerSecond}");
+        logger.DebugLog($"Velocity Per Second after applying Flapping, Gliding, and Gravity: {currentVelocityPerSecond}");
 
-        currentVelocityPerSecond =LocomotionMath.ClampSpeed(currentVelocityPerSecond, MaxVelocity);        
-        logger.DebugLog($"Clamped Velocity: {currentVelocityPerSecond}");
+        // Clamp velocity to max speed
+        currentVelocityPerSecond = LocomotionMath.ClampSpeed(currentVelocityPerSecond, MaxVelocityPerSecond);
+        logger.DebugLog($"Clamped Velocity Per Second after Flapping, Gliding, and Gravity: {currentVelocityPerSecond}");
 
         return currentVelocityPerSecond;
     }

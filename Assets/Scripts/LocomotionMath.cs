@@ -147,57 +147,35 @@ public static class LocomotionMath
         return yawRotation * rollRotation;
     }
 
-    public static void TestYawCalculation()
+    public static float CalculatePercentageOfMaxSpeed(Vector3 velocity, float maxVelocity)
     {
-        float currentYaw = 0f;
-        float armAngleRad = Mathf.PI / 6; // 30 degrees
-        Vector3 velocity = new Vector3(5f, 0f, 5f);
-        float maxVelocity = 10f;
-        float deltaTime = 0.02f; // 50 FPS
-
-        
-        for (int i = 0; i < 360; i++)
-        {
-            float newYaw = CalculateYaw(currentYaw, armAngleRad, velocity, maxVelocity, deltaTime);
-
-            Quaternion newRoll = CalculateRoll(armAngleRad, new Vector3(Mathf.Sin(newYaw * Mathf.Deg2Rad), 0f, Mathf.Cos(newYaw * Mathf.Deg2Rad)));
-            Debug.Log($"Frame {i + 1}: Current Yaw: {currentYaw} degrees, New Yaw: {newYaw} degrees, Calculated Roll: {newRoll} degrees");
-
-            currentYaw = newYaw;
-        }
+        float horizontalSpeed = new Vector2(velocity.x, velocity.z).magnitude;
+        return horizontalSpeed / maxVelocity;
     }
-
-    
 
     /// <summary>
     /// Calculates yaw rotation based on arm angle and current velocity.
     /// </summary>
-    public static float CalculateYaw(
-        float currentYaw,
+    public static float CalculateAddedYaw(
         float armAngleRad,
-        Vector3 velocity,
-        float maxVelocity,
-        float deltaTime)
+        float percantageOfMaxSpeed,
+        float deltaTime, float minAngleToRotateRadiant = 0.3f, float minRotationSpeedPerSecond = 20f, float maxRotationSpeedPerSecond = 110f)
     {
-        const float minAngleToRotate = 5f;
-
         float angleDeg = armAngleRad * Mathf.Rad2Deg;
-        if (Mathf.Abs(angleDeg) <= minAngleToRotate)
-            return currentYaw;
+        if (angleDeg <= minAngleToRotateRadiant)
+            return 0f;
+        
+        float maxRotationSpeed = maxRotationSpeedPerSecond * deltaTime;
+        float minRotationSpeed = minRotationSpeedPerSecond * deltaTime;
 
-        float maxRotationSpeed = 110f * deltaTime;
-        float minRotationSpeed = 20f * deltaTime;
-
-        float rotationSpeed =
-            armAngleRad * maxRotationSpeed *
-            (Mathf.Abs(velocity.x) + Mathf.Abs(velocity.z)) / maxVelocity;
+        float rotationSpeed = armAngleRad * maxRotationSpeed * percantageOfMaxSpeed;
 
         rotationSpeed = Mathf.Clamp(rotationSpeed, -maxRotationSpeed, maxRotationSpeed);
 
         if (Mathf.Abs(rotationSpeed) < minRotationSpeed)
             rotationSpeed = Mathf.Sign(rotationSpeed) * minRotationSpeed;
 
-        return currentYaw + rotationSpeed;
+        return rotationSpeed;
     }
 
     /// <summary>
@@ -278,5 +256,23 @@ public static class LocomotionMath
     public static float CalculateArmDistance(Vector3 leftPos, Vector3 rightPos)
     {
         return Vector3.Distance(leftPos, rightPos);
+    }
+
+    public static Vector3 CalculateVelocityPerSecond(Vector3 currentVelocityPerSecond, Vector3 flapStrength, bool isFlapping, bool isGliding, float deltaTime )
+    {
+        if (isFlapping)
+        {
+            currentVelocityPerSecond += flapStrength;
+        }
+        else if(isGliding)
+        {
+            currentVelocityPerSecond.y =
+            LocomotionMath.CalculateGlideFallSpeed(
+                currentVelocityPerSecond.y,
+                -1f,
+                deltaTime);
+        }
+
+        return currentVelocityPerSecond;
     }
 }
