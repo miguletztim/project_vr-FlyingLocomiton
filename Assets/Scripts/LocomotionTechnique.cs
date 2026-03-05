@@ -120,55 +120,12 @@ public class LocomotionTechnique : MonoBehaviour
     {
         currentVelocityPerSecond = ApplyControllerMovementToVelocityClamped(currentVelocityPerSecond, leftPos, rightPos, deltaTime);
 
-        // ----------------------------
-        // ROTATION
-        // ----------------------------
-        /*
-        Vector3 forward =
-            LocomotionMath.CalculateForwardDirection(leftPos, rightPos);
-        logger.DebugLog($"Forward Direction: {forward}");
-
-        float yaw =
-            LocomotionMath.CalculateYaw(
-                transform.eulerAngles.y,
-                armAngle,
-                velocityPerSecond,
-                MaxVelocity,
-                deltaTime);
-        logger.DebugLog($"Calculated Yaw: {yaw} degrees");
-
-        logger.DebugLog($"Current Rotation: {transform.rotation.eulerAngles}");
-        logger.DebugLog($"Applying Rotation - Yaw: {yaw} degrees, Arm Angle: {armAngle * Mathf.Rad2Deg:F2} degrees");
-        transform.rotation =
-            Quaternion.Euler(0f, yaw, 0f) *
-            LocomotionMath.CalculateRoll(armAngle, forward);
-        logger.DebugLog($"New Rotation: {transform.rotation.eulerAngles}");
-        */
-
         float armAngle = LocomotionMath.CalculateArmAngle(leftPos, rightPos);
         logger.DebugLog($"Arm Angle: {armAngle * Mathf.Rad2Deg:F2} degrees");
 
         float percentageOfMaxSpeed = LocomotionMath.CalculatePercentageOfMaxSpeed(currentVelocityPerSecond, MaxVelocityPerSecond);
 
-        // Yaw
-        float yaw =
-            LocomotionMath.CalculateAddedYaw(
-            armAngle,
-            percentageOfMaxSpeed,
-            deltaTime);
-
-        logger.DebugLog($"Calculated Yaw: {yaw} degrees");
-
-        logger.DebugLog($"Current Rotation: {transform.rotation.eulerAngles}");
-        logger.DebugLog($"Applying Rotation - Yaw: {yaw} degrees, Arm Angle: {armAngle * Mathf.Rad2Deg:F2} degrees");
-
-        // Yaw und Roll als unabhängige Achsen kombinieren
-        // Reihenfolge wichtig: erst Yaw (Y-Achse), dann Roll (Z-Achse)
-        Quaternion yawRotation = Quaternion.AngleAxis(yaw, Vector3.up);
-        Quaternion rollRotation = Quaternion.AngleAxis(armAngle * Mathf.Rad2Deg, Vector3.forward);
-
-        // Roll im lokalen Raum anwenden, Yaw im Weltraum
-        transform.rotation = yawRotation * rollRotation;
+        SetMovementRotation(armAngle, percentageOfMaxSpeed, deltaTime);
 
 
         // ----------------------------
@@ -211,6 +168,29 @@ public class LocomotionTechnique : MonoBehaviour
         // ASSERT (SIDE EFFECT)
         // ----------------------------
         transform.position += movement;
+    }
+
+    private void SetMovementRotation(float armAngle, float percentageOfMaxSpeed, float deltaTime)
+    {
+        // Yaw
+        float yaw =
+            LocomotionMath.CalculateAddedYaw(
+            armAngle,
+            percentageOfMaxSpeed,
+            deltaTime);
+
+        logger.DebugLog($"Calculated Yaw: {yaw} degrees");
+
+        logger.DebugLog($"Current Rotation: {transform.rotation.eulerAngles}");
+        logger.DebugLog($"Applying Rotation - Yaw: {yaw} degrees, Arm Angle: {armAngle * Mathf.Rad2Deg:F2} degrees");
+
+        // Yaw und Roll als unabhängige Achsen kombinieren
+        // Reihenfolge wichtig: erst Yaw (Y-Achse), dann Roll (Z-Achse)
+        Quaternion yawRotation = Quaternion.AngleAxis(yaw, Vector3.up);
+        Quaternion rollRotation = Quaternion.AngleAxis(armAngle * Mathf.Rad2Deg, Vector3.forward);
+
+        // Roll im lokalen Raum anwenden, Yaw im Weltraum
+        transform.rotation = yawRotation * rollRotation;
     }
 
     private Vector3 ApplyControllerMovementToVelocityClamped(Vector3 currentVelocityPerSecond, Vector3 leftPos, Vector3 rightPos, float deltaTime)
