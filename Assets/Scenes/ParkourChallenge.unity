@@ -3633,10 +3633,6 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   controller: 2
-  leftController: 0
-  rightController: 0
-  moveSpeed: 2
-  rotationSpeed: 50
   selectionTaskMeasure: {fileID: 1487194128}
 --- !u!135 &207417616
 SphereCollider:
@@ -6220,10 +6216,6 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   controller: 1
-  leftController: 0
-  rightController: 0
-  moveSpeed: 2
-  rotationSpeed: 50
   selectionTaskMeasure: {fileID: 1487194128}
 --- !u!135 &404658275
 SphereCollider:
@@ -34191,6 +34183,9 @@ MonoBehaviour:
   leftController: 1
   rightController: 2
   hmd: {fileID: 835662726}
+  currentMovingMethod: 2
+  maxControllerDistance: 0
+  currentVelocityPerSecond: {x: 0, y: 0, z: 0}
   parkourCounter: {fileID: 1487194127}
   stage: 
   selectionTaskMeasure: {fileID: 1487194128}

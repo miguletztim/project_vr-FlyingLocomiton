@@ -63,7 +63,7 @@ public class Logger
     {
         try
         {
-            File.AppendAllText(logFilePath, message + Environment.NewLine);
+            //File.AppendAllText(logFilePath, message + Environment.NewLine);
         }
         catch (Exception ex)
         {
