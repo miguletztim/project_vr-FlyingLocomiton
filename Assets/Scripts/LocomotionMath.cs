@@ -11,38 +11,6 @@ using UnityEngine;
 /// </summary>
 public static class LocomotionMath
 {
-    public readonly struct FlapDiagnostic
-    {
-        public readonly bool byVertical;
-        public readonly bool byHorizontalX;
-        public readonly bool byForwardZ;
-        public readonly bool isFlapping;
-
-        public FlapDiagnostic(bool byVertical, bool byHorizontalX, bool byForwardZ)
-        {
-            this.byVertical = byVertical;
-            this.byHorizontalX = byHorizontalX;
-            this.byForwardZ = byForwardZ;
-            this.isFlapping = byVertical || byHorizontalX || byForwardZ;
-        }
-    }
-
-    public readonly struct GlideDiagnostic
-    {
-        public readonly float thresholdDistance;
-        public readonly bool validDistance;
-        public readonly bool validAngle;
-        public readonly bool isGliding;
-
-        public GlideDiagnostic(float thresholdDistance, bool validDistance, bool validAngle)
-        {
-            this.thresholdDistance = thresholdDistance;
-            this.validDistance = validDistance;
-            this.validAngle = validAngle;
-            this.isGliding = validDistance && validAngle;
-        }
-    }
-
     // ─── Constants ────────────────────────────────────────────────────────────
 
     /// <summary>Terminal falling velocity in m/s (≈ real-world ~274 km/h).</summary>
@@ -55,16 +23,16 @@ public static class LocomotionMath
     private const float GroundDragFactor = 2f;
 
     /// <summary>Minimum controller speed (m/s) required to register a flap input.</summary>
-    private const float MinimumFlapStrength = 10f;
+    private const float MinimumFlapStrength = 20f;
 
     /// <summary>
     /// Arm angle (degrees) above which the player is considered to be banking/rotating.
     /// Also used as the upper bound for the glide angle check.
     /// </summary>
-    private const float MinAngleToRotateDegree = 17f;
+    private const float MinAngleToRotateDegree = 10f;
 
     /// <summary>Maximum yaw rotation speed in degrees per second.</summary>
-    private const float MaxRotationSpeedPerSecond = 90f;
+    private const float MaxDegreePerSecond = 90f;
 
     /// <summary>
     /// Fraction of <see cref="maxControllerDistance"/> the current distance
@@ -83,7 +51,7 @@ public static class LocomotionMath
     /// </param>
     /// <param name="deltaTime">Elapsed time since the last frame in seconds.</param>
     /// <returns>A <see cref="Vector3"/> with only a Y component representing the gravity delta.</returns>
-    public static Vector3 ApplyGravity(float gravity, float deltaTime)
+    public static Vector3 Gravity(float gravity, float deltaTime)
     {
         return new Vector3(0f, gravity * deltaTime, 0f);
     }
@@ -97,7 +65,7 @@ public static class LocomotionMath
     /// <returns>The velocity vector with both horizontal and vertical components clamped.</returns>
     public static Vector3 ClampSpeed(Vector3 velocity, float maxVelocity)
     {
-        float clampedVertical = Mathf.Max(velocity.y, TerminalFallVelocity);
+        float clampedVertical = Mathf.Clamp(Mathf.Max(velocity.y, TerminalFallVelocity), TerminalFallVelocity, maxVelocity);;
 
         Vector3 horizontal = new(velocity.x, 0f, velocity.z);
         Vector3 clampedHorizontal = horizontal.normalized * Mathf.Min(horizontal.magnitude, maxVelocity);
@@ -118,7 +86,7 @@ public static class LocomotionMath
     /// The velocity vector after drag has been applied. Never inverts direction;
     /// magnitude is floored at zero.
     /// </returns>
-    public static Vector3 CalculateVelocityAfterDrag(Vector3 velocity, bool onGround, float deltaTime)
+    public static Vector3 VelocityAfterDrag(Vector3 velocity, bool onGround, float deltaTime)
     {
         float drag = onGround ? GroundDragFactor : AirDragFactor;
         float newMagnitude = velocity.magnitude * (1f - drag * deltaTime);
@@ -146,34 +114,29 @@ public static class LocomotionMath
     /// The scaled flap impulse vector. Returns <see cref="Vector3.zero"/> when
     /// <paramref name="isFlapping"/> is <c>false</c>.
     /// </returns>
-    public static Vector3 CalculateFlapStrength(
+    public static (Vector3 flapStrength, bool isFlapping) CalculateFlapStrength(
         Vector3 controllerVelocity,
-        float height,
-        float maxHeight,
-        out bool isFlapping)
+        float height)
     {
-        FlapDiagnostic flapDiagnostic = EvaluateFlapDiagnostic(controllerVelocity);
-        isFlapping = flapDiagnostic.isFlapping;
-
-        if (!isFlapping)
-            return Vector3.zero;
+        const float MaxHeight = 30f;
+        bool isFlapping = IsFlapping(controllerVelocity);
 
         // Reduce vertical lift linearly as the player approaches maxHeight.
-        float heightFactor = Mathf.Clamp01(1f - height / maxHeight) * 0.9f;
+        float heightFactor = Mathf.Clamp01(1f - height / MaxHeight);
         controllerVelocity.y *= heightFactor;
 
-        return controllerVelocity * 0.5f;
+        return (controllerVelocity, isFlapping);
     }
 
     /// <summary>
     /// Evaluates which flap condition was met. Useful for diagnostics and tests.
     /// </summary>
-    public static FlapDiagnostic EvaluateFlapDiagnostic(Vector3 controllerVelocity)
+    public static bool IsFlapping(Vector3 controllerVelocity)
     {
         bool byVertical = controllerVelocity.y > 3f;
-        bool byHorizontalX = Mathf.Abs(controllerVelocity.x) > 10f;
-        bool byForwardZ = -controllerVelocity.z > 10f;
-        return new FlapDiagnostic(byVertical, byHorizontalX, byForwardZ);
+        bool byHorizontal = new Vector2(controllerVelocity.x, controllerVelocity.z).magnitude > MinimumFlapStrength;
+
+        return byVertical || byHorizontal;
     }
 
     /// <summary>
@@ -189,68 +152,20 @@ public static class LocomotionMath
     /// <returns>
     /// The adjusted vertical velocity, never slower than <paramref name="glideLimit"/>.
     /// </returns>
-    public static float CalculateGlideFallSpeed(
+    public static float GlideFallSpeed(
         float verticalVelocity,
-        float glideLimit,
         float deltaTime)
     {
-        if (verticalVelocity >= glideLimit)
-            return verticalVelocity;
+        const float GlideLimit = -4f;
 
-        verticalVelocity -= deltaTime * verticalVelocity;
-        return Mathf.Max(verticalVelocity, glideLimit);
+        // Apply a strong drag to rapidly approach the glide limit, but never exceed it.
+        if(verticalVelocity > 0f)
+        {
+            verticalVelocity -= deltaTime * verticalVelocity;
+        }
+
+        return Mathf.Max(verticalVelocity, GlideLimit);
     }
-
-    /// <summary>
-    /// Determines whether the player is currently gliding based on arm angle and
-    /// how far the controllers are spread relative to the session maximum.
-    /// </summary>
-    /// <param name="armAngleDegree">
-    /// Angle of the arm relative to the horizontal plane in degrees.
-    /// Computed via <see cref="CalculateArmAngleDegree"/>.
-    /// </param>
-    /// <param name="currentControllerDistance">
-    /// Current distance between the two VR controllers in metres.
-    /// </param>
-    /// <param name="maxControllerDistance">
-    /// Running maximum controller distance observed this session (metres).
-    /// Updated in-place when <paramref name="currentControllerDistance"/> exceeds it.
-    /// </param>
-    /// <returns>
-    /// <c>true</c> when both the arm spread and arm angle satisfy the glide criteria.
-    /// </returns>
-    public static bool CalculateIfGliding(
-        float armAngleDegree,
-        float currentControllerDistance,
-        ref float maxControllerDistance)
-    {
-        if (currentControllerDistance > maxControllerDistance)
-            maxControllerDistance = currentControllerDistance;
-
-        GlideDiagnostic diagnostic = EvaluateGlideDiagnostic(
-            armAngleDegree,
-            currentControllerDistance,
-            maxControllerDistance);
-
-        return diagnostic.isGliding;
-    }
-
-    /// <summary>
-    /// Evaluates glide criteria against the current max controller distance.
-    /// Useful for diagnostics and tests.
-    /// </summary>
-    public static GlideDiagnostic EvaluateGlideDiagnostic(
-        float armAngleDegree,
-        float currentControllerDistance,
-        float maxControllerDistance)
-    {
-        float thresholdDistance = maxControllerDistance * GlideDistanceThresholdFactor;
-        bool validDistance = currentControllerDistance > thresholdDistance;
-        bool validAngle = Mathf.Abs(armAngleDegree) < MinAngleToRotateDegree;
-        return new GlideDiagnostic(thresholdDistance, validDistance, validAngle);
-    }
-
-    // ─── Controller / Arm Geometry ────────────────────────────────────────────
 
     /// <summary>
     /// Returns the angle (in degrees) between the line connecting both controllers
@@ -262,7 +177,7 @@ public static class LocomotionMath
     /// <returns>Arm tilt angle in degrees, in the range [−90, 90].</returns>
     public static float CalculateArmAngleDegree(Vector3 leftPos, Vector3 rightPos)
     {
-        Vector3 diff = leftPos - rightPos;
+        Vector3 diff = rightPos - leftPos;
         float horizontalMagnitude = Mathf.Sqrt(diff.x * diff.x + diff.z * diff.z);
         return Mathf.Atan2(diff.y, horizontalMagnitude) * Mathf.Rad2Deg;
     }
@@ -346,35 +261,6 @@ public static class LocomotionMath
     }
 
     /// <summary>
-    /// Computes the per-frame yaw rotation quaternion based on arm tilt.
-    /// Returns <see cref="Quaternion.identity"/> when the tilt is below
-    /// <see cref="MinAngleToRotateDegree"/>.
-    /// </summary>
-    /// <param name="armAngleDegree">Arm tilt angle in degrees.</param>
-    /// <param name="percentageOfMaxSpeed">
-    /// Current horizontal speed as a fraction of maximum speed [0, 1].
-    /// Reserved for future speed-scaled rotation; currently unused.
-    /// </param>
-    /// <param name="deltaTime">Elapsed time since the last frame in seconds.</param>
-    /// <returns>A <see cref="Quaternion"/> representing the yaw delta for this frame.</returns>
-    public static Quaternion CalculateAddedYaw(
-        float armAngleDegree,
-        float percentageOfMaxSpeed,
-        float deltaTime)
-    {
-        if (!ShouldRotate(armAngleDegree))
-            return Quaternion.identity;
-
-        float rotationPercentage   = CalculateRotationPercentage(armAngleDegree);
-        float rotationSpeedPerFrame = -rotationPercentage * MaxRotationSpeedPerSecond * deltaTime;
-        rotationSpeedPerFrame = Mathf.Clamp(rotationSpeedPerFrame,
-            -MaxRotationSpeedPerSecond * deltaTime,
-             MaxRotationSpeedPerSecond * deltaTime);
-
-        return Quaternion.AngleAxis(rotationSpeedPerFrame, Vector3.up);
-    }
-
-    /// <summary>
     /// Computes the visual roll quaternion around the forward axis based on arm tilt.
     /// Intended for cosmetic camera or avatar lean, not physics.
     /// </summary>
@@ -383,20 +269,7 @@ public static class LocomotionMath
     /// <returns>A <see cref="Quaternion"/> representing the roll for this frame.</returns>
     public static Quaternion CalculateRoll(float armAngleDegree, Vector3 forward)
     {
-        float rotationPercentage = CalculateRotationPercentage(armAngleDegree);
-        return Quaternion.AngleAxis(rotationPercentage * Mathf.Rad2Deg, forward);
-    }
-
-    /// <summary>
-    /// Rotates the velocity vector by an arbitrary rotation quaternion.
-    /// Used to steer velocity after computing a yaw or roll delta.
-    /// </summary>
-    /// <param name="velocity">Velocity vector to rotate (m/s).</param>
-    /// <param name="rotation">The rotation to apply.</param>
-    /// <returns>The rotated velocity vector.</returns>
-    public static Vector3 CalculateVelocityAfterAddedRotation(Vector3 velocity, Quaternion rotation)
-    {
-        return rotation * velocity;
+        return Quaternion.AngleAxis(armAngleDegree, forward);
     }
 
     // ─── Physics Helpers ──────────────────────────────────────────────────────
@@ -438,7 +311,7 @@ public static class LocomotionMath
     /// The velocity projected onto the hit surface normal, or the original
     /// velocity when no collision is detected.
     /// </returns>
-    public static Vector3 CalculateVelocityAfterCollision(
+    public static Vector3 VelocityAfterCollision(
         Vector3 velocityPerSecond,
         Vector3 position,
         float deltaTime)
@@ -451,5 +324,72 @@ public static class LocomotionMath
         }
 
         return velocityPerSecond;
+    }    
+
+    public static bool IsGliding(float currentDistance, float maxDistance, float armAngleDegree)
+    {
+        float thresholdDistance = maxDistance * GlideDistanceThresholdFactor;
+        
+        bool validDistance = currentDistance > thresholdDistance;
+        bool validAngle = Mathf.Abs(armAngleDegree) < MinAngleToRotateDegree;
+
+        return validDistance && validAngle;
     }
+
+    /// <summary>
+    /// Returns <c>true</c> when movement points opposite to <paramref name="forward"/>.
+    /// Uses a strict backward check via dot product (<c>dot &lt; 0</c>).
+    /// </summary>
+    /// <param name="velocity">Current movement vector in world space.</param>
+    /// <param name="forward">Reference forward direction in world space.</param>
+    /// <returns>
+    /// <c>true</c> when the movement is backward relative to <paramref name="forward"/>;
+    /// otherwise <c>false</c>. Returns <c>false</c> for near-zero input vectors.
+    /// </returns>
+    public static bool IsMovingBackwards(Vector3 velocity, Vector3 forward)
+    {
+        const float MinVectorSqrMagnitude = 0.0001f;
+
+        // Without a stable direction reference we do not classify movement as backward.
+        if (velocity.sqrMagnitude < MinVectorSqrMagnitude || forward.sqrMagnitude < MinVectorSqrMagnitude)
+        {
+            return false;
+        }
+
+        float dot = Vector3.Dot(velocity.normalized, forward.normalized);
+        return dot < 0f;
+    }
+
+    public static (Quaternion addedYaw, Vector3 newMovementPerSecond) VelocityWithRotation(Vector3 newMovementPerSecond, Vector3 forward, float armAngleDegree, float deltaTime)
+    {
+        if (!ShouldRotate(armAngleDegree)) {
+            return (Quaternion.identity, newMovementPerSecond);
+        }
+
+        
+        bool isMovingBackwards = IsMovingBackwards(newMovementPerSecond, forward);
+        float direction = isMovingBackwards ? 1f : -1f;
+
+        float rotationPercentage = direction * CalculateRotationPercentage(armAngleDegree);
+        float rotationSpeedPerFrame = rotationPercentage * MaxDegreePerSecond * deltaTime;
+        Quaternion addedYaw = Quaternion.AngleAxis(rotationSpeedPerFrame, Vector3.up);
+
+        Vector3 moveDir = newMovementPerSecond.normalized;
+        float rightDot = Vector3.Dot(moveDir, Vector3.Cross(Vector3.up, forward).normalized);
+
+        // 1. Erst bremsen
+        float brakeAmount = Mathf.Clamp01(rotationPercentage * rightDot);
+        float brakeFactor = 1f - brakeAmount;
+
+        Vector3 forwardComponent = forward.normalized * Vector3.Dot(newMovementPerSecond, forward.normalized);
+        Vector3 lateralComponent = newMovementPerSecond - forwardComponent;
+
+        Vector3 brakingLateral = lateralComponent * brakeFactor;
+        Vector3 brakingMovement = forwardComponent + brakingLateral;
+
+        // 2. Dann rotieren
+        return (addedYaw, addedYaw * brakingMovement);
+    }
+
+    
 }

@@ -14,20 +14,20 @@ public enum LogLevel
     Critical
 }
 
-public class Logger
+public static class Logger
 {
-    private LogLevel currentLogLevel;
-    private string logFilePath;
+    private static LogLevel currentLogLevel = LogLevel.Info;
+    private static string logFilePath = "./Assets/Scripts/Logs/logs.txt";
 
-    // Konstruktor zur Initialisierung des Loggers
-    public Logger(LogLevel logLevel = LogLevel.Info, string logFilePath = "logs.txt")
+    // Initiale Konfiguration des statischen Loggers.
+    public static void Configure(LogLevel logLevel = LogLevel.Info, string filePath = "./Assets/Scripts/Logs/logs.txt")
     {
-        this.currentLogLevel = logLevel;
-        this.logFilePath = logFilePath;
+        currentLogLevel = logLevel;
+        logFilePath = filePath;
     }
 
     // Methode, um Log-Nachrichten anzuzeigen und in eine Datei zu schreiben
-    private void Log(LogLevel level, string message)
+    private static void Log(LogLevel level, string message)
     {
         if (level < currentLogLevel)
             return; // Wenn der Log-Level kleiner als der aktuelle Log-Level ist, nichts tun
@@ -59,11 +59,11 @@ public class Logger
     }
 
     // Methode zum Schreiben des Logs in eine Datei
-    private void WriteLogToFile(string message)
+    private static void WriteLogToFile(string message)
     {
         try
         {
-            //File.AppendAllText(logFilePath, message + Environment.NewLine);
+            File.AppendAllText(logFilePath, message + Environment.NewLine);
         }
         catch (Exception ex)
         {
@@ -73,33 +73,33 @@ public class Logger
     }
 
     // Öffentlich zugängliche Methoden für die verschiedenen Log-Level
-    public void DebugLog(string message)
+    public static void DebugLog(string message)
     {
         Log(LogLevel.Debug, message);
     }
 
-    public void InfoLog(string message)
+    public static void InfoLog(string message)
     {
         Log(LogLevel.Info, message);
     }
 
-    public void WarningLog(string message)
+    public static void WarningLog(string message)
     {
         Log(LogLevel.Warning, message);
     }
 
-    public void ErrorLog(string message)
+    public static void ErrorLog(string message)
     {
         Log(LogLevel.Error, message);
     }
 
-    public void CriticalLog(string message)
+    public static void CriticalLog(string message)
     {
         Log(LogLevel.Critical, message);
     }
     
     // Dynamische Anpassung des Log-Levels zur Laufzeit
-    public void SetLogLevel(LogLevel newLogLevel)
+    public static void SetLogLevel(LogLevel newLogLevel)
     {
         currentLogLevel = newLogLevel;
     }
