@@ -261,15 +261,16 @@ public static class LocomotionMath
     }
 
     /// <summary>
-    /// Computes the visual roll quaternion around the forward axis based on arm tilt.
+    /// Computes a roll quaternion around a forward axis based on arm tilt.
     /// Intended for cosmetic camera or avatar lean, not physics.
     /// </summary>
     /// <param name="armAngleDegree">Arm tilt angle in degrees.</param>
-    /// <param name="forward">The forward axis to roll around (typically the player's heading).</param>
+    /// <param name="forward">World-space forward axis (for example from <see cref="CalculateForwardDirection"/>).</param>
     /// <returns>A <see cref="Quaternion"/> representing the roll for this frame.</returns>
     public static Quaternion CalculateRoll(float armAngleDegree, Vector3 forward)
     {
-        return Quaternion.AngleAxis(armAngleDegree, forward);
+        Vector3 axis = forward.sqrMagnitude > 0f ? forward.normalized : Vector3.forward;
+        return Quaternion.AngleAxis(armAngleDegree, axis);
     }
 
     // ─── Physics Helpers ──────────────────────────────────────────────────────

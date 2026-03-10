@@ -13,7 +13,6 @@ public class LocomotionTechnique : MonoBehaviour
     public OVRInput.Controller leftController;
     public OVRInput.Controller rightController;
     public GameObject hmd;
-    public GameObject cameraOffset;
     private Vector3 previousLeftPos;
     private Vector3 previousRightPos;
 
@@ -175,7 +174,15 @@ public class LocomotionTechnique : MonoBehaviour
 
     public void UpdateTransform(Orientation result)
     {
-        transform.SetPositionAndRotation(result.position, result.roll * result.yaw);
+        Quaternion newRoll = result.roll;
+        Quaternion newYaw = result.yaw;
+
+        // Apply heading first.
+        transform.rotation = newYaw;
+
+        // Apply forward-oriented roll in world space to match CalculateForwardDirection axis.
+        transform.rotation = newRoll * transform.rotation;
+        transform.position = result.position;
     }
 
     private void ResetGliding()
@@ -193,7 +200,7 @@ public class LocomotionTechnique : MonoBehaviour
             OVRInput.GetDown(OVRInput.Button.PrimaryHandTrigger, OVRInput.Controller.LTouch))
         {
             currentOrientation.movementPerSecond = Vector3.zero;
-            currentOrientation.position                   = Vector3.zero;
+            currentOrientation.position = Vector3.zero;
             currentOrientation.maxControllerDistance = 0f;
             Logger.Logger.DebugLog("Hard Reset Triggered: Position, Velocity, and Max Horizontal Arm Length reset.");
         }
