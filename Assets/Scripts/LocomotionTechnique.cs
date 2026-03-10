@@ -240,7 +240,7 @@ public class LocomotionTechnique : MonoBehaviour
         {
             movementPerSecond = newMovementPerSecond,
             yaw = currentOrientation.yaw * addedYaw,
-            roll = currentOrientation.roll,
+            roll = newRoll,
             position = currentOrientation.position + movement,
             maxControllerDistance = newMaxControllerDistance
         };
