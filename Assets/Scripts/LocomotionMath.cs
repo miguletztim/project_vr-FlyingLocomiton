@@ -324,7 +324,15 @@ public static class LocomotionMath
 
         if (Physics.SphereCast(position, 0.2f, movement.normalized, out RaycastHit hit, movement.magnitude))
         {
-            velocityPerSecond = Vector3.ProjectOnPlane(velocityPerSecond, hit.normal);
+            bool isObjectT = hit.collider.gameObject.CompareTag("objectT");
+            bool isSelectionTaskStart = hit.collider.gameObject.CompareTag("selectionTaskStart");
+            bool isObjectInteractionTask = hit.collider.gameObject.CompareTag("objectInteractionTask");
+            bool isDone = hit.collider.gameObject.CompareTag("done");
+
+            if(!(isObjectT || isSelectionTaskStart || isObjectInteractionTask || isDone))
+            {
+                velocityPerSecond = Vector3.ProjectOnPlane(velocityPerSecond, hit.normal);
+            }
         }
 
         return velocityPerSecond;
