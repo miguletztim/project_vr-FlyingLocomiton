@@ -125,10 +125,9 @@ public class LocomotionTechnique : MonoBehaviour
         previousLeftPos = leftPos;
         previousRightPos = rightPos;
 
-        HardReset();
-        ResetGliding();
         SwitchMovingMode();
         ResetPosition();
+        Teleport();
     }
 
     private static ControllerVariables UpdateControllerVariables(Vector3 leftPos, Vector3 rightPos, Vector3 previousLeftPos, Vector3 previousRightPos, float deltaTime)
@@ -300,6 +299,16 @@ public class LocomotionTechnique : MonoBehaviour
     
         if (resetPressed && parkourCounter != null && parkourCounter.parkourStart)
             currentOrientation.position = parkourCounter.currentRespawnPos;
+    }
+
+    private void Teleport()
+    {
+        bool isPressed = OVRInput.GetDown(OVRInput.Button.Two, OVRInput.Controller.RTouch);
+
+        if(isPressed)
+        {
+            currentOrientation.position = new(13f, 1f, 145f);
+        }
     }
 
     void OnTriggerEnter(Collider other)
