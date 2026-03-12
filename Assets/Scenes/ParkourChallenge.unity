@@ -22917,7 +22917,7 @@ MonoBehaviour:
   vignette: {fileID: 835662730}
   playerRig: {fileID: 1757178249}
   moveThreshold: 0.01
-  rotateThreshold: 0.1
+  rotateThreshold: 0.01
   fovMoving: 60
   fovDefault: 120
   lerpSpeed: 5
@@ -23549,12 +23549,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 42141eef1a96541419f479b2da4e328c, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
---- !u!1 &1494648809 stripped
-GameObject:
-  m_CorrespondingSourceObject: {fileID: 3642352042163518208, guid: f54012181eacade4ea242c65f804720f,
-    type: 3}
-  m_PrefabInstance: {fileID: 1757178239}
-  m_PrefabAsset: {fileID: 0}
 --- !u!4 &1495043495 stripped
 Transform:
   m_CorrespondingSourceObject: {fileID: 3942613375915263889, guid: 6b3c85587dc0a514bbf5da8ff3106582,
@@ -34189,10 +34183,9 @@ MonoBehaviour:
   leftController: 1
   rightController: 2
   hmd: {fileID: 835662726}
-  cameraOffset: {fileID: 1494648809}
   runTests: 0
   testForwardDirection: {x: 0, y: 0, z: 1}
-  testArmAngleMode: 1
+  testArmAngleMode: 0
   testDistanceMode: 0
   testVelocityDirection: {x: 0, y: 0, z: 1}
   testVelocityMagnitude: 10
