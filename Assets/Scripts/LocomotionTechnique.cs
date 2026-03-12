@@ -109,6 +109,8 @@ public class LocomotionTechnique : MonoBehaviour
         if (currentMovingMethod == MovingMethod.Flying)
         {
             currentOrientation = Fly(currentOrientation, currentControllerVariables, deltaTime);
+            ResetGliding();
+            HardReset();
         }
         else if (currentMovingMethod == MovingMethod.Walking)
         {
