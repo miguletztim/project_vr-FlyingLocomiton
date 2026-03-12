@@ -125,6 +125,9 @@ public static class LocomotionMath
         float heightFactor = Mathf.Clamp01(1f - height / MaxHeight);
         controllerVelocity.y *= heightFactor;
 
+        // Damp the speed
+        controllerVelocity *= 0.5f;
+
         return (controllerVelocity, isFlapping);
     }
 
