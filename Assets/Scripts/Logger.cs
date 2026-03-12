@@ -7,6 +7,7 @@ namespace Logger
 
 public enum LogLevel
 {
+    Trace,
     Debug,
     Info,
     Warning,
@@ -37,6 +38,9 @@ public static class Logger
         // Log-Nachricht in die Konsole (Unity-spezifisch)
         switch (level)
         {
+            case LogLevel.Trace:
+                Debug.Log(logMessage);
+                break;
             case LogLevel.Debug:
                 Debug.Log(logMessage);
                 break;
