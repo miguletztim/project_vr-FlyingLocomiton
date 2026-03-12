@@ -293,9 +293,7 @@ public class LocomotionTechnique : MonoBehaviour
 
     private void ResetPosition()
     {
-        bool resetPressed =
-            OVRInput.GetDown(OVRInput.Button.Two, OVRInput.Controller.RTouch) ||
-            OVRInput.GetDown(OVRInput.Button.Four, OVRInput.Controller.LTouch);
+        bool resetPressed = OVRInput.GetDown(OVRInput.Button.Two, OVRInput.Controller.LTouch);
     
         if (resetPressed && parkourCounter != null && parkourCounter.parkourStart)
             currentOrientation.position = parkourCounter.currentRespawnPos;
