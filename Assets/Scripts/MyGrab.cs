@@ -1,49 +1,144 @@
+using System;
 using UnityEngine;
 
 public class MyGrab : MonoBehaviour
 {
     public OVRInput.Controller controller;
-    public GameObject windTarget;
+    private GameObject windTarget;
     public SelectionTaskMeasure selectionTaskMeasure;
+
+    public float dampingFactor = 0.8f;
 
     [Header("Wind Settings")]
     /// <summary>
     /// Rechter Controller dreht gegen den Uhrzeigersinn (negatives Y-Drehmoment),
     /// linker Controller dreht im Uhrzeigersinn.
     /// </summary>
-    private bool isRightController
-    {
-        get
-        {
-            return controller.Equals(OVRInput.GetActiveControllerForHand(OVRInput.Handedness.RightHanded));
-        }
-    }
+
     public float windRotationTorque = 5f;
     public float aerodynamicAlignmentTorque = 3f;
     public float autoTargetMaxDistance = 10f;
     public float windCastRadius = 0.35f;
+    [SerializeField] private Transform trackingSpace;
+    [SerializeField] private bool useYawOnlyDirection = true;
+    [SerializeField] private ParticleSystem windParticles;
+    [SerializeField] private float particleSpeedMultiplier = 1f;
+    [SerializeField] private float minParticleSpeed = 0.1f;
 
     void Update()
     {
-        Vector3 controllerVelocity = OVRInput.GetLocalControllerVelocity(controller);
-        float flapStrength = controllerVelocity.magnitude;
+        if (IsValidObjectT(windTarget))
+        {
+            Rigidbody rb = windTarget.transform.parent != null
+            ? windTarget.transform.parent.GetComponent<Rigidbody>()
+            : windTarget.GetComponent<Rigidbody>();
 
-        Logger.Logger.DebugLog($"[MyGrab] Flap Strength: {flapStrength}");
+            rb.AddForce(-rb.linearVelocity * dampingFactor * Time.deltaTime, ForceMode.Impulse); // 0.5f anpassen
+        }
 
-        if(flapStrength <= 5f) {
+
+        // Gemessene Handgeschwindigkeit des rechten Controllers (Tracking-Space).
+        Vector3 controllerVelocityLocal = OVRInput.GetLocalControllerVelocity(controller);
+
+        // Blickrichtung der HMD-Kamera als Referenz für vorwärts/rückwärts.
+        if(Camera.main == null) {
+            Logger.Logger.ErrorLog("[MyGrab] Camera was not found!");
+            StopWindParticles();
             return;
         }
 
-        Vector3 windDirection = controllerVelocity.normalized;
+        Vector3 controllerVelocityWorld = TransformControllerVelocityToWorld(controllerVelocityLocal);
+
+        // Mindeststärke gegen Rauschen/Kleinstbewegungen.
+        float flapStrength = controllerVelocityWorld.magnitude;
+        if(flapStrength <= 1f) {
+            StopWindParticles();
+            return;
+        }
+        Logger.Logger.DebugLog($"[MyGrab] Flap Strength: {flapStrength}");
+
+
+        // Berechnet die aktuelle Vorwärtsrichtung
+        Vector3 viewForward = Camera.main.transform.forward;
+        if (viewForward.sqrMagnitude > 0.001f)
+        {
+            viewForward.Normalize();
+        }
+        Logger.Logger.DebugLog($"[MyGrab] View Forward: {viewForward}");
+
+        // Rückwärtsbewegungen werden ignoriert, damit nur Vorwärts-Flügelschläge zählen.
+        bool isMovingBackward = Vector3.Dot(controllerVelocityWorld, viewForward) < -0.1f;
+        if(isMovingBackward) {
+            Logger.Logger.DebugLog($"[MyGrab] IsMovingBackwards: {isMovingBackward}");
+            StopWindParticles();
+            return;
+        }
+
+        // Windstoßrichtung folgt der aktuellen Schlagrichtung.
+        Vector3 windDirection = controllerVelocityWorld.normalized;
         Logger.Logger.DebugLog($"[MyGrab] WindDirection: {windDirection}");
+        UpdateWindParticles(windDirection, flapStrength);
         
+        // Ziel entlang des Windvektors ermitteln und den Impuls anwenden.
         GameObject target = ResolveWindTarget(windDirection);
-        Logger.Logger.DebugLog($"[MyGrab] Target {target}");
+        Logger.Logger.DebugLog($"[MyGrab] Target {target}");   
 
         if (target != null)
         {
-            ApplyWindGust(0.5f, target, windDirection);
+            ApplyWindGust(target, windDirection, flapStrength);
         }
+    }
+
+    void UpdateWindParticles(Vector3 direction, float strength)
+    {
+        if (windParticles == null)
+        {
+            return;
+        }
+
+        if (direction.sqrMagnitude < 0.001f)
+        {
+            StopWindParticles();
+            return;
+        }
+
+        Transform particlesTransform = windParticles.transform;
+        particlesTransform.rotation = Quaternion.LookRotation(direction.normalized, Vector3.up);
+
+        float speed = Mathf.Max(minParticleSpeed, strength * particleSpeedMultiplier);
+        ParticleSystem.MainModule main = windParticles.main;
+        main.startSpeed = speed;
+
+        if (!windParticles.isPlaying)
+        {
+            windParticles.Play();
+        }
+    }
+
+    void StopWindParticles()
+    {
+        if (windParticles == null)
+        {
+            return;
+        }
+
+        if (windParticles.isPlaying)
+        {
+            windParticles.Stop(true, ParticleSystemStopBehavior.StopEmitting);
+        }
+    }
+
+    Vector3 TransformControllerVelocityToWorld(Vector3 localVelocity)
+    {
+        Transform reference = trackingSpace != null ? trackingSpace : Camera.main.transform;
+
+        if (useYawOnlyDirection)
+        {
+            Quaternion yawOnly = Quaternion.Euler(0f, reference.eulerAngles.y, 0f);
+            return yawOnly * localVelocity;
+        }
+
+        return reference.TransformDirection(localVelocity);
     }
 
     GameObject ResolveWindTarget(Vector3 windDirection)
@@ -61,11 +156,6 @@ public class MyGrab : MonoBehaviour
         Vector3 origin = transform.position;
         Vector3 direction = windDirection.normalized;
         GameObject best = FindObjectTBySphereCast(origin, direction);
-
-        if (best == null)
-        {
-            best = FindObjectTNearby(origin, direction);
-        }
 
         windTarget = best;
         return windTarget;
@@ -136,7 +226,7 @@ public class MyGrab : MonoBehaviour
         return null;
     }
 
-    void ApplyWindGust(float strength, GameObject target, Vector3 windDirection)
+    void ApplyWindGust(GameObject target, Vector3 windDirection, float strength)
     {
         Rigidbody rb = target.transform.parent != null
             ? target.transform.parent.GetComponent<Rigidbody>()
@@ -147,37 +237,29 @@ public class MyGrab : MonoBehaviour
             return;
         }
 
-        // Drehrichtung: rechts = gegen den Uhrzeigersinn (−Y), links = im Uhrzeigersinn (+Y)
-        float rotSign = isRightController ? -1f : 1f;
-        rb.AddTorque(rb.transform.up * rotSign * windRotationTorque * strength, ForceMode.Impulse);
-
-        // Objekt leicht in Windrichtung verschieben
-        rb.AddForce(windDirection * strength, ForceMode.Impulse);
-
-        // Aerodynamische Ausrichtung: T-Form richtet sich windschnittig aus (Weather-Vane-Effekt)
         ApplyAerodynamicAlignment(rb, windDirection, strength);
     }
 
     void ApplyAerodynamicAlignment(Rigidbody rb, Vector3 windDirection, float strength)
     {
-        // Nur horizontale Komponente berücksichtigen für saubere Ausrichtung
-        Vector3 windHorizontal = new Vector3(windDirection.x, 0f, windDirection.z);
-        if (windHorizontal.sqrMagnitude < 0.01f) return;
-        windHorizontal.Normalize();
+        if (windDirection.sqrMagnitude < 0.01f) return;
+        windDirection.Normalize();
 
-        // Längsachse des T (Stiel) zeigt in Windrichtung (windschnittig)
-        Vector3 objForward = new Vector3(rb.transform.forward.x, 0f, rb.transform.forward.z);
+        Vector3 objForward = rb.transform.right;
         if (objForward.sqrMagnitude < 0.01f) return;
         objForward.Normalize();
 
-        // Kreuzprodukt liefert die Rotationsachse; Fehlausrichtung (1 − dot) skaliert das Drehmoment
-        Vector3 cross = Vector3.Cross(objForward, windHorizontal);
-        float misalignment = 1f - Vector3.Dot(objForward, windHorizontal);
+        Vector3 cross = Vector3.Cross(objForward, windDirection);
 
-        if (cross.magnitude > 0.01f)
-        {
-            rb.AddTorque(cross.normalized * aerodynamicAlignmentTorque * misalignment * strength, ForceMode.Force);
-        }
+        // P term: restoring force toward wind alignment
+        Vector3 restoring = cross * aerodynamicAlignmentTorque * strength;
+
+        // D term: damp angular velocity — critical for stopping cleanly
+        // Increase dampingFactor until oscillation stops (typically 0.1–0.5)
+        Vector3 damping = -rb.angularVelocity * aerodynamicAlignmentTorque 
+                        * dampingFactor * strength;
+
+        rb.AddTorque(restoring + damping, ForceMode.Force);
     }
 
     void OnTriggerEnter(Collider other)
