@@ -171,9 +171,8 @@ public class MyGrab : MonoBehaviour
 
         Vector3 origin = transform.position;
         Vector3 direction = windDirection.normalized;
-        GameObject best = FindObjectTBySphereCast(origin, direction);
-
-        windTarget = best;
+        windTarget = FindObjectTBySphereCast(origin, direction) ?? FindObjectTNearby(origin, direction);
+        
         return windTarget;
     }
 
@@ -259,7 +258,7 @@ public class MyGrab : MonoBehaviour
         ApplyAerodynamicAlignment(rb, windDirection, strength);
     }
 
-    void ApplyAerodynamicAlignment(Rigidbody rb, Vector3 windDirection, float strength)
+    private static void ApplyAerodynamicAlignment(Rigidbody rb, Vector3 windDirection, float strength)
     {
         // Richtung vom Objekt zum Spieler (nur horizontal)
         Vector3 toPlayer = Camera.main.transform.position - rb.transform.position;
