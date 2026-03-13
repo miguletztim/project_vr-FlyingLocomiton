@@ -403,5 +403,15 @@ public static class LocomotionMath
         return (addedYaw, addedYaw * brakingMovement);
     }
 
-    
+    public static Vector3 Flap(Vector3 controllerVelocity, float currentHeight)
+    {
+        (Vector3 flapStrength, bool isFlapping) = LocomotionMath.CalculateFlapStrength(controllerVelocity, currentHeight);
+
+        if (!isFlapping)
+        {
+            return Vector3.zero;
+        }
+
+        return flapStrength;
+    }
 }

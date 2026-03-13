@@ -225,7 +225,7 @@ public class LocomotionTechnique : MonoBehaviour
         Vector3 newMovementPerSecond = currentOrientation.movementPerSecond;
         Logger.Logger.DebugLog($"Current Movement Per Second: {newMovementPerSecond}");
 
-        newMovementPerSecond += Flap(controllerVariables.velocityPerSecond, currentOrientation.position.y);
+        newMovementPerSecond += LocomotionMath.Flap(controllerVariables.velocityPerSecond, currentOrientation.position.y);
         Logger.Logger.DebugLog($"Movement Per Second after applying Controller Movement: {newMovementPerSecond}");
 
         (Quaternion addedYaw, Vector3 a) = LocomotionMath.VelocityWithRotation(newMovementPerSecond, controllerVariables.forward, controllerVariables.armAngleDegree, deltaTime);
@@ -269,17 +269,7 @@ public class LocomotionTechnique : MonoBehaviour
         return newMovementPerSecond;
     }
 
-    private static Vector3 Flap(Vector3 controllerVelocity, float currentHeight)
-    {
-        (Vector3 flapStrength, bool isFlapping) = LocomotionMath.CalculateFlapStrength(controllerVelocity, currentHeight);
 
-        if (!isFlapping)
-        {
-            return Vector3.zero;
-        }
-
-        return flapStrength;
-    }
 
     private static Vector3 MovementWithEnvironment(Vector3 position, float deltaTime, Vector3 newMovementPerSecond)
     {
