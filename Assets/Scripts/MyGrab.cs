@@ -280,7 +280,7 @@ public class MyGrab : MonoBehaviour
         if (horizontalMagnitude > verticalMagnitude)
         {
             // Windstoß von rechts: X +45°, von links: X -45°
-            float xAngle = localWind.x > 0f ? 45f : -45f;
+            float xAngle = localWind.x > 0f ? 90f : -90f;
             rotationOffset = Quaternion.Euler(xAngle, 90f, -90f);
         }
         else
