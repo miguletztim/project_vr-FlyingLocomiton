@@ -1,6 +1,7 @@
 ﻿using UnityEngine;
 using Logger;
 using UnityEngine.UIElements;
+using System.Collections;
 
 /// <summary>
 /// Unity MonoBehaviour that orchestrates locomotion.
@@ -92,6 +93,19 @@ public class LocomotionTechnique : MonoBehaviour
             movementPerSecond = Vector3.zero,
             maxControllerDistance = 1f
         };
+
+        StartCoroutine(TestCoroutine());
+    }
+
+    IEnumerator TestCoroutine()
+    {
+        currentOrientation.movementPerSecond = new(0f, 8f, 500f);
+
+        yield return new WaitForSeconds(3f);
+        
+        // Nach 3 Sekunden: currentOrientation.position anpassen
+        currentOrientation.movementPerSecond = new(0f, 0f, 0f);
+        currentOrientation.position = new(13f, 2f, 146f);
     }
 
     void Update()
