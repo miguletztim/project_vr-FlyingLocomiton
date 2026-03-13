@@ -59,7 +59,7 @@ public static class Logger
         }
 
         // Log-Nachricht in eine Datei speichern (wenn in der Produktion gewünscht)
-        WriteLogToFile(logMessage);
+        //WriteLogToFile(logMessage);
     }
 
     // Methode zum Schreiben des Logs in eine Datei
