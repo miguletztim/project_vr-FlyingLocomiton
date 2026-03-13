@@ -276,21 +276,22 @@ public class MyGrab : MonoBehaviour
         float horizontalMagnitude = Mathf.Abs(localWind.x);
         float verticalMagnitude   = Mathf.Abs(localWind.y);
 
-        float targetXAngle;
+        Quaternion rotationOffset;
 
         if (horizontalMagnitude > verticalMagnitude)
         {
-            // Schlag von links oder rechts → X zu 90°
-            targetXAngle = -90f;
+            // Windstoß von rechts: X +45°, von links: X -45°
+            float xAngle = localWind.x > 0f ? 45f : -45f;
+            rotationOffset = Quaternion.Euler(xAngle, 90f, -90f);
         }
         else
         {
             // Schlag von unten → X zu 0°, Schlag von oben → X zu -180°
-            targetXAngle = localWind.y > 0f ? 0f : -180f;
+            float targetXAngle = localWind.y > 0f ? 0f : -180f;
+            rotationOffset = Quaternion.AngleAxis(targetXAngle, Vector3.right);
         }
 
-        Quaternion xTilt = Quaternion.AngleAxis(targetXAngle, Vector3.right);
-        Quaternion targetRotation = lookAtPlayer * xTilt;
+        Quaternion targetRotation = lookAtPlayer * rotationOffset;
 
         // Prüfen ob aktuelle Rotation bereits nah an Zielrotation ist
         float angleDiff = Quaternion.Angle(rb.rotation, targetRotation);
