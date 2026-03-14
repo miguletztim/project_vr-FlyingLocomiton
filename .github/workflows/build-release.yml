@@ -13,46 +13,14 @@ on:
         default: 'v1.0.0'
 
 jobs:
-  # ── Job 1: Activate Unity license ─────────────────────────────────────────
+  # ── Job: Build APK and publish GitHub Release ─────────────────────────────
   #
-  # This job requests a Unity activation file (.alf), uploads it as an
-  # artefact, and then uses it to obtain a valid license (.ulf).
-  #
-  # One-time setup required:
-  #   1. Run this workflow once — download the "activation-file" artefact.
-  #   2. Upload the .alf file at https://license.unity3d.com/manual
-  #   3. Select "Unity Personal" and download the resulting .ulf file.
-  #   4. Add the full contents of the .ulf file as a GitHub secret:
-  #        Settings → Secrets → Actions → New secret → UNITY_LICENSE
-  #   5. After UNITY_LICENSE is set, this job becomes a no-op (skipped).
-  activate:
-    name: Activate Unity License
-    runs-on: ubuntu-latest
-    # Skip if UNITY_LICENSE is already stored as a secret.
-    if: ${{ secrets.UNITY_LICENSE == '' }}
-    steps:
-      - name: Request Unity activation file (.alf)
-        uses: game-ci/unity-request-activation-file@v2
-        id: alf
-
-      - name: Upload activation file artefact
-        uses: actions/upload-artifact@v4
-        with:
-          name: activation-file
-          path: ${{ steps.alf.outputs.filePath }}
-          # ── After downloading this artefact ──────────────────────────────
-          # 1. Go to https://license.unity3d.com/manual
-          # 2. Upload the .alf file and choose "Unity Personal".
-          # 3. Download the .ulf file and copy its full XML contents.
-          # 4. Add it as a GitHub secret named UNITY_LICENSE.
-          # 5. Re-run the main workflow — this job will be skipped from now on.
-
-  # ── Job 2: Build APK and publish GitHub Release ───────────────────────────
+  # Before the first run, UNITY_LICENSE must be set as a repository secret.
+  # Use the separate activation workflow (.github/workflows/activation.yml)
+  # to generate and save the license — run it once, then delete it.
   build-and-release:
     name: Build APK and publish Release
     runs-on: ubuntu-latest
-    # Wait for activation job (even if it was skipped).
-    needs: activate
 
     # Needed to create releases and push tags on workflow_dispatch.
     permissions:
