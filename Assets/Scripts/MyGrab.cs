@@ -1,4 +1,3 @@
-using System;
 using UnityEngine;
 
 public class MyGrab : MonoBehaviour
@@ -38,7 +37,7 @@ public class MyGrab : MonoBehaviour
 
         // Step 4: Ignore very small movements to reduce noise and accidental triggers.
         float flapStrength = controllerVelocityWorld.magnitude;
-        if (flapStrength < 1f)
+        if (flapStrength < 1.3f)
         {
             return;
         }
@@ -64,12 +63,24 @@ public class MyGrab : MonoBehaviour
         Vector3 windDirection = controllerVelocityWorld.normalized;
         Logger.Logger.DebugLog($"[MyGrab] WindDirection: {windDirection}");
 
+        // Vertical component in [-1, 1]
+        float vertical = Mathf.Clamp(Vector3.Dot(windDirection, Vector3.up), -1f, 1f);
+
+        // Convert to angle in degrees: down=-90, flat=0, up=+90
+        float velocityPitchDeg = Mathf.Asin(vertical) * Mathf.Rad2Deg;
+
+                // Vertical component in [-1, 1]
+        float horizontal = Mathf.Clamp(Vector3.Dot(windDirection, Vector3.right), -1f, 1f);
+
+        // Convert to angle in degrees: down=-90, flat=0, up=+90
+        float horizontalDeg = Mathf.Asin(horizontal) * Mathf.Rad2Deg;
+
         // Step 8: Find a valid target in the wind direction and apply the gust effect.
         GameObject target = ResolveWindTarget(windDirection);
         if (target != null)
         {
             Logger.Logger.DebugLog($"[MyGrab] Target {target}");
-            ApplyWindGust(target, windDirection, flapStrength);
+            ApplyWindGust(target, velocityPitchDeg, horizontalDeg, flapStrength);
         }
         else {
             Logger.Logger.WarningLog("NO TARGET FOUND!");
@@ -243,7 +254,7 @@ public class MyGrab : MonoBehaviour
         return null;
     }
 
-    void ApplyWindGust(GameObject target, Vector3 windDirection, float strength)
+    void ApplyWindGust(GameObject target, float tilt, float yaw, float strength)
     {
         // Prefer parent rigidbody (if object is child mesh), otherwise use target rigidbody.
         Rigidbody rb = target.transform.parent != null
@@ -256,20 +267,28 @@ public class MyGrab : MonoBehaviour
             return;
         }
 
+        // Apply configurable damping so motion settles after each gust.
+        rb.linearDamping = Mathf.Max(0f, dampingFactor);
+        rb.angularDamping = Mathf.Max(0f, dampingFactor);
+
         // Compute horizontal direction from target to player for player-facing reference frame.
         Vector3 toPlayer = Camera.main.transform.position - rb.transform.position;
         toPlayer.y = 0f;
         toPlayer.Normalize();
 
-        // Basis-Rotation: Z (Blau) zeigt zum Spieler
-        Quaternion lookAtPlayer = Quaternion.LookRotation(toPlayer, Vector3.up);
+        // Wind should face where it is blowing: away from the player.
+        Vector3 awayFromPlayer = -toPlayer;
+        if (awayFromPlayer.sqrMagnitude < 0.0001f)
+        {
+            return;
+        }
 
-        // Convert world wind direction into local frame where forward points toward the player.
-        Vector3 localWind = Quaternion.Inverse(lookAtPlayer) * windDirection;
+        Quaternion targetRotation = Quaternion.LookRotation(awayFromPlayer.normalized, Vector3.up) * Quaternion.Euler(90f-tilt, 0f, 0f);
 
-        // Build target orientation opposite local wind and rotate toward it based on strength.
-        Quaternion targetRotation = Quaternion.LookRotation(localWind.normalized, Vector3.up);
-        rb.rotation = Quaternion.RotateTowards(rb.rotation, targetRotation, 350f);
+        float rotateStep = Mathf.Max(1f, strength * 10f);
+        rb.rotation = Quaternion.RotateTowards(rb.rotation, targetRotation, rotateStep);
+
+        rb.AddForce(0.0002f * tilt * Vector3.up, ForceMode.Impulse);
     }
 
     void OnTriggerEnter(Collider other)
