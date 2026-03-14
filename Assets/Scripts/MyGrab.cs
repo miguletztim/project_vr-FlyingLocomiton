@@ -69,8 +69,10 @@ public class MyGrab : MonoBehaviour
         // Convert to angle in degrees: down=-90, flat=0, up=+90
         float velocityPitchDeg = Mathf.Asin(vertical) * Mathf.Rad2Deg;
 
-                // Vertical component in [-1, 1]
-        float horizontal = Mathf.Clamp(Vector3.Dot(windDirection, Vector3.right), -1f, 1f);
+            // Horizontal component relative to current player view (camera right on ground plane).
+            Vector3 viewRight = Vector3.ProjectOnPlane(Camera.main.transform.right, Vector3.up).normalized;
+            Vector3 planarWindDirection = Vector3.ProjectOnPlane(windDirection, Vector3.up).normalized;
+            float horizontal = Mathf.Clamp(Vector3.Dot(planarWindDirection, viewRight), -1f, 1f);
 
         // Convert to angle in degrees: down=-90, flat=0, up=+90
         float horizontalDeg = Mathf.Asin(horizontal) * Mathf.Rad2Deg;
@@ -283,7 +285,18 @@ public class MyGrab : MonoBehaviour
             return;
         }
 
-        Quaternion targetRotation = Quaternion.LookRotation(awayFromPlayer.normalized, Vector3.up) * Quaternion.Euler(90f-tilt, 0f, 0f);
+        Quaternion baseRotation = Quaternion.LookRotation(awayFromPlayer.normalized, Vector3.up);
+        Quaternion targetRotation;
+
+        // If horizontal stroke dominates, roll around the wind axis (away from player).
+        if (Mathf.Abs(yaw) > Mathf.Abs(tilt))
+        {
+            targetRotation = Quaternion.AngleAxis(-yaw, awayFromPlayer.normalized) * baseRotation;
+        }
+        else
+        {
+            targetRotation = baseRotation * Quaternion.Euler(90f - tilt, 0f, 0f);
+        }
 
         float rotateStep = Mathf.Max(1f, strength * 10f);
         rb.rotation = Quaternion.RotateTowards(rb.rotation, targetRotation, rotateStep);
