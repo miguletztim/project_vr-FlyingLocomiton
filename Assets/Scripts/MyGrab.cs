@@ -2,6 +2,8 @@ using UnityEngine;
 
 public class MyGrab : MonoBehaviour
 {
+    private const float MinValidControllerSpeed = 1.3f;
+    private const float forceFactorObject = 0.001f;
     public OVRInput.Controller controller;
     private GameObject windTarget;
     public SelectionTaskMeasure selectionTaskMeasure;
@@ -9,6 +11,7 @@ public class MyGrab : MonoBehaviour
 
     public float dampingFactor = 0.8f;
     public float directionDotDeadzone = 0.05f;
+    public float pitchVerticalThresholdDeg = 25f;
 
     [Header("Wind Settings")]
     /// <summary>
@@ -44,18 +47,7 @@ public class MyGrab : MonoBehaviour
         Logger.Logger.DebugLog($"[MyGrab] Flap Strength: {flapStrength}");
 
         // Step 5: Reject strokes that violate left/right cross-body policy.
-        bool isInvalidStroke = IsInvalidStroke(controllerVelocityWorld);
-        if (isInvalidStroke)
-        {
-            Logger.Logger.WarningLog("[MyGrab] WRONG DIRECTION");
-            return;
-        }
-
-        // Step 6: Reject strokes moving opposite to where the player is looking.
-        bool isBackwards = IsBackwards(controllerVelocityWorld);
-        if (isBackwards)
-        {
-            Logger.Logger.WarningLog("[MyGrab] BACKWARDS");
+        if(!IsControllerMovingValid(controller)) {
             return;
         }
 
@@ -63,26 +55,12 @@ public class MyGrab : MonoBehaviour
         Vector3 windDirection = controllerVelocityWorld.normalized;
         Logger.Logger.DebugLog($"[MyGrab] WindDirection: {windDirection}");
 
-        // Vertical component in [-1, 1]
-        float vertical = Mathf.Clamp(Vector3.Dot(windDirection, Vector3.up), -1f, 1f);
-
-        // Convert to angle in degrees: down=-90, flat=0, up=+90
-        float velocityPitchDeg = Mathf.Asin(vertical) * Mathf.Rad2Deg;
-
-            // Horizontal component relative to current player view (camera right on ground plane).
-            Vector3 viewRight = Vector3.ProjectOnPlane(Camera.main.transform.right, Vector3.up).normalized;
-            Vector3 planarWindDirection = Vector3.ProjectOnPlane(windDirection, Vector3.up).normalized;
-            float horizontal = Mathf.Clamp(Vector3.Dot(planarWindDirection, viewRight), -1f, 1f);
-
-        // Convert to angle in degrees: down=-90, flat=0, up=+90
-        float horizontalDeg = Mathf.Asin(horizontal) * Mathf.Rad2Deg;
-
         // Step 8: Find a valid target in the wind direction and apply the gust effect.
         GameObject target = ResolveWindTarget(windDirection);
         if (target != null)
         {
             Logger.Logger.DebugLog($"[MyGrab] Target {target}");
-            ApplyWindGust(target, velocityPitchDeg, horizontalDeg, flapStrength);
+            ApplyWindGust(target, windDirection, flapStrength);
         }
         else {
             Logger.Logger.WarningLog("NO TARGET FOUND!");
@@ -105,30 +83,7 @@ public class MyGrab : MonoBehaviour
 
     private bool IsInvalidStroke(Vector3 controllerVelocityWorld)
     {
-        // Use horizontal right direction to classify lateral strokes robustly.
-        Vector3 viewRight = Vector3.ProjectOnPlane(Camera.main.transform.right, Vector3.up).normalized;
-        Vector3 planarVelocity = Vector3.ProjectOnPlane(controllerVelocityWorld, Vector3.up);
-
-        bool isLeftController = IsLeftController(controller);
-        bool isRightController = IsRightController(controller);
-
-        // Cross-body policy: left must move right, right must move left.
-        bool isInvalidStroke = false;
-        if (isLeftController || isRightController)
-        {
-            // Dot with viewRight tells us if the stroke has rightward (+) or leftward (-) component.
-            float lateralDot = Vector3.Dot(planarVelocity, viewRight);
-
-            // Positive dot = moving rightward, negative = moving leftward
-            bool isMovingRight = lateralDot > directionDotDeadzone;
-            bool isMovingLeft = lateralDot < -directionDotDeadzone;
-
-            // Left hand should stroke rightward; right hand should stroke leftward.
-            isInvalidStroke = (isLeftController && !isMovingRight)
-                            || (isRightController && !isMovingLeft);
-        }
-
-        return isInvalidStroke;
+        return IsInvalidStrokeForController(controller, controllerVelocityWorld);
     }
 
     Vector3 TransformControllerVelocityToWorld(Vector3 localVelocity)
@@ -164,7 +119,7 @@ public class MyGrab : MonoBehaviour
         }
 
         // Avoid casting with near-zero direction vectors.
-        if (windDirection.sqrMagnitude < 0.001f)
+        if (windDirection.sqrMagnitude < forceFactorObject)
         {
             return null;
         }
@@ -191,6 +146,60 @@ public class MyGrab : MonoBehaviour
     static bool IsRightController(OVRInput.Controller c)
     {
         return c == OVRInput.Controller.RTouch || c == OVRInput.Controller.RHand;
+    }
+
+    private bool IsInvalidStrokeForController(OVRInput.Controller activeController, Vector3 controllerVelocityWorld)
+    {
+        // Use horizontal right direction to classify lateral strokes robustly.
+        Vector3 viewRight = Vector3.ProjectOnPlane(Camera.main.transform.right, Vector3.up).normalized;
+        Vector3 planarVelocity = Vector3.ProjectOnPlane(controllerVelocityWorld, Vector3.up);
+
+        bool isLeftController = IsLeftController(activeController);
+        bool isRightController = IsRightController(activeController);
+
+        // Cross-body policy: left must move right, right must move left.
+        bool isInvalidStroke = false;
+        if (isLeftController || isRightController)
+        {
+            // Dot with viewRight tells us if the stroke has rightward (+) or leftward (-) component.
+            float lateralDot = Vector3.Dot(planarVelocity, viewRight);
+
+            // Positive dot = moving rightward, negative = moving leftward
+            bool isMovingRight = lateralDot > directionDotDeadzone;
+            bool isMovingLeft = lateralDot < -directionDotDeadzone;
+
+            // Left hand should stroke rightward; right hand should stroke leftward.
+            isInvalidStroke = (isLeftController && !isMovingRight)
+                            || (isRightController && !isMovingLeft);
+        }
+
+        return isInvalidStroke;
+    }
+
+    private bool IsControllerMovingValid(OVRInput.Controller activeController)
+    {
+        Vector3 localVelocity = OVRInput.GetLocalControllerVelocity(activeController);
+        Vector3 worldVelocity = TransformControllerVelocityToWorld(localVelocity);
+
+        if (worldVelocity.magnitude < MinValidControllerSpeed)
+        {
+            return false;
+        }
+
+        if (IsBackwards(worldVelocity))
+        {
+            return false;
+        }
+
+        return !IsInvalidStrokeForController(activeController, worldVelocity);
+    }
+
+    private bool AreBothControllersMovingValid()
+    {
+        bool isKnownHand = IsLeftController(controller) || IsRightController(controller);
+        return isKnownHand
+            && IsControllerMovingValid(OVRInput.Controller.LTouch)
+            && IsControllerMovingValid(OVRInput.Controller.RTouch);
     }
 
     GameObject FindObjectTBySphereCast(Vector3 origin, Vector3 direction)
@@ -256,8 +265,22 @@ public class MyGrab : MonoBehaviour
         return null;
     }
 
-    void ApplyWindGust(GameObject target, float tilt, float yaw, float strength)
+    void ApplyWindGust(GameObject target, Vector3 windDirection, float strength)
     {
+        // Vertical component in [-1, 1]
+        float vertical = Mathf.Clamp(Vector3.Dot(windDirection, Vector3.up), -1f, 1f);
+
+        // Convert to angle in degrees: down=-90, flat=0, up=+90
+        float velocityPitchDeg = Mathf.Asin(vertical) * Mathf.Rad2Deg;
+
+        // Horizontal component relative to current player view (camera right on ground plane).
+        Vector3 viewRight = Vector3.ProjectOnPlane(Camera.main.transform.right, Vector3.up).normalized;
+        Vector3 planarWindDirection = Vector3.ProjectOnPlane(windDirection, Vector3.up).normalized;
+        float horizontal = Mathf.Clamp(Vector3.Dot(planarWindDirection, viewRight), -1f, 1f);
+
+        // Convert to angle in degrees: down=-90, flat=0, up=+90
+        float horizontalDeg = Mathf.Asin(horizontal) * Mathf.Rad2Deg;
+
         // Prefer parent rigidbody (if object is child mesh), otherwise use target rigidbody.
         Rigidbody rb = target.transform.parent != null
             ? target.transform.parent.GetComponent<Rigidbody>()
@@ -270,7 +293,7 @@ public class MyGrab : MonoBehaviour
         }
 
         // Apply configurable damping so motion settles after each gust.
-        rb.linearDamping = Mathf.Max(0f, dampingFactor);
+        rb.linearDamping = Mathf.Max(0f, dampingFactor+0.1f);
         rb.angularDamping = Mathf.Max(0f, dampingFactor);
 
         // Compute horizontal direction from target to player for player-facing reference frame.
@@ -289,19 +312,29 @@ public class MyGrab : MonoBehaviour
         Quaternion targetRotation;
 
         // If horizontal stroke dominates, roll around the wind axis (away from player).
-        if (Mathf.Abs(yaw) > Mathf.Abs(tilt))
+        if (Mathf.Abs(horizontalDeg) > Mathf.Abs(velocityPitchDeg))
         {
-            targetRotation = Quaternion.AngleAxis(-yaw, awayFromPlayer.normalized) * baseRotation;
+            targetRotation = Quaternion.AngleAxis(-horizontalDeg, awayFromPlayer.normalized) * baseRotation;
         }
         else
         {
-            targetRotation = baseRotation * Quaternion.Euler(90f - tilt, 0f, 0f);
+            targetRotation = baseRotation * Quaternion.Euler(90f - velocityPitchDeg, 0f, 0f);
         }
 
         float rotateStep = Mathf.Max(1f, strength * 10f);
         rb.rotation = Quaternion.RotateTowards(rb.rotation, targetRotation, rotateStep);
-
-        rb.AddForce(0.0002f * tilt * Vector3.up, ForceMode.Impulse);
+        if (AreBothControllersMovingValid())
+        {
+            // Steep pitch drives vertical motion; flatter pitch drives forward (away-from-player) motion.
+            if (Mathf.Abs(velocityPitchDeg) >= pitchVerticalThresholdDeg)
+            {
+                rb.AddForce(forceFactorObject * strength * Vector3.up, ForceMode.Impulse);
+            }
+            else
+            {
+                rb.AddForce(forceFactorObject * strength * awayFromPlayer.normalized, ForceMode.Impulse);
+            }
+        }
     }
 
     void OnTriggerEnter(Collider other)
