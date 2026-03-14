@@ -77,7 +77,7 @@ jobs:
           # androidPackage produces an APK (not an AAB) — required for sideloading.
           androidExportType: androidPackage
           buildName: VRParkour
-          buildPath: build
+          buildsPath: build
           versioning: Custom
           version: ${{ steps.version.outputs.version }}
           # Keystore — if the secret is empty Unity falls back to its default
