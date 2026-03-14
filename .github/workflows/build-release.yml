@@ -55,12 +55,15 @@ jobs:
       # Meta Quest 2 (Snapdragon XR2)  → ARM64, Android 10 (API 29)
       # Meta Quest 3 (Snapdragon XR2 Gen 2) → ARM64, Android 12 (API 32)
       #
-      # Required repository secrets (Personal license — no license file needed):
+      # Required repository secrets (Unity Personal license):
+      #   UNITY_LICENSE   – contents of the Unity .ulf license file
+      #                     (generate via the game-ci activation workflow, then
+      #                      add as a GitHub repo secret named UNITY_LICENSE)
       #   UNITY_EMAIL     – Unity account e-mail
       #   UNITY_PASSWORD  – Unity account password
       #
-      # game-ci detects the absence of UNITY_LICENSE and automatically
-      # activates a Unity Personal license using the credentials above.
+      # NOTE: Without UNITY_LICENSE the build fails with
+      # "Missing Unity License File and no Serial was found".
       #
       # Optional keystore secrets (omit for a development/debug build):
       #   ANDROID_KEYSTORE_BASE64  – base64-encoded .keystore file
@@ -70,6 +73,7 @@ jobs:
       - name: Build Android APK
         uses: game-ci/unity-builder@v4
         env:
+          UNITY_LICENSE: ${{ secrets.UNITY_LICENSE }}
           UNITY_EMAIL: ${{ secrets.UNITY_EMAIL }}
           UNITY_PASSWORD: ${{ secrets.UNITY_PASSWORD }}
         with:
@@ -78,7 +82,7 @@ jobs:
           # androidPackage produces an APK (not an AAB) — required for sideloading.
           androidExportType: androidPackage
           buildName: VRParkour
-          buildPath: build
+          buildsPath: build
           versioning: Custom
           version: ${{ steps.version.outputs.version }}
           # Keystore — if the secret is empty Unity falls back to its default
