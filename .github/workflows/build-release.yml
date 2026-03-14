@@ -55,10 +55,12 @@ jobs:
       # Meta Quest 2 (Snapdragon XR2)  → ARM64, Android 10 (API 29)
       # Meta Quest 3 (Snapdragon XR2 Gen 2) → ARM64, Android 12 (API 32)
       #
-      # Required repository secrets:
-      #   UNITY_LICENSE   – contents of your Unity license XML
+      # Required repository secrets (Personal license — no license file needed):
       #   UNITY_EMAIL     – Unity account e-mail
       #   UNITY_PASSWORD  – Unity account password
+      #
+      # game-ci detects the absence of UNITY_LICENSE and automatically
+      # activates a Unity Personal license using the credentials above.
       #
       # Optional keystore secrets (omit for a development/debug build):
       #   ANDROID_KEYSTORE_BASE64  – base64-encoded .keystore file
@@ -68,7 +70,6 @@ jobs:
       - name: Build Android APK
         uses: game-ci/unity-builder@v4
         env:
-          UNITY_LICENSE: ${{ secrets.UNITY_LICENSE }}
           UNITY_EMAIL: ${{ secrets.UNITY_EMAIL }}
           UNITY_PASSWORD: ${{ secrets.UNITY_PASSWORD }}
         with:
