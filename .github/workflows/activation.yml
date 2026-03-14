@@ -1,0 +1,36 @@
+name: Unity License Activation (run once)
+
+# Run manually — only needed once to generate the UNITY_LICENSE secret.
+# After saving the secret, delete or disable this workflow.
+on:
+  workflow_dispatch:
+
+jobs:
+  activation:
+    name: Request Unity Activation File
+    runs-on: ubuntu-latest
+    steps:
+      # ── 1. Generate the .alf activation file ──────────────────────────────
+      - name: Request activation file
+        uses: game-ci/unity-request-activation-file@v2
+        id: alf
+
+      # ── 2. Upload it so you can download it from the Actions run page ──────
+      - name: Upload activation file artefact
+        uses: actions/upload-artifact@v4
+        with:
+          name: activation-file
+          path: ${{ steps.alf.outputs.filePath }}
+
+      # ── What to do next ───────────────────────────────────────────────────
+      # 1. Download the "activation-file" artefact from this run.
+      # 2. Unzip it — you will find a .alf file inside.
+      # 3. Go to https://license.unity3d.com/manual and sign in.
+      # 4. Upload the .alf file and select "Unity Personal".
+      # 5. Download the resulting .ulf file.
+      # 6. Open the .ulf file in a text editor and copy all its contents.
+      # 7. Add it as a GitHub secret:
+      #      Settings → Secrets and variables → Actions → New repository secret
+      #      Name:  UNITY_LICENSE
+      #      Value: <paste the full .ulf XML here>
+      # 8. Delete or disable this workflow — it is no longer needed.
