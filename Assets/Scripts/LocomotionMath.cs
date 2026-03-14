@@ -65,7 +65,7 @@ public static class LocomotionMath
     /// <returns>The velocity vector with both horizontal and vertical components clamped.</returns>
     public static Vector3 ClampSpeed(Vector3 velocity, float maxVelocity)
     {
-        float clampedVertical = Mathf.Clamp(Mathf.Max(velocity.y, TerminalFallVelocity), TerminalFallVelocity, maxVelocity);;
+        float clampedVertical = Mathf.Clamp(Mathf.Max(velocity.y, TerminalFallVelocity), TerminalFallVelocity, maxVelocity);
 
         Vector3 horizontal = new(velocity.x, 0f, velocity.z);
         Vector3 clampedHorizontal = horizontal.normalized * Mathf.Min(horizontal.magnitude, maxVelocity);
@@ -126,7 +126,7 @@ public static class LocomotionMath
         controllerVelocity.y *= heightFactor;
 
         // Damp the speed
-        controllerVelocity *= 0.5f;
+        controllerVelocity *= 0.3f;
 
         return (controllerVelocity, isFlapping);
     }
