@@ -328,7 +328,7 @@ public class MyGrab : MonoBehaviour
             // Steep pitch drives vertical motion; flatter pitch drives forward (away-from-player) motion.
             if (Mathf.Abs(velocityPitchDeg) >= pitchVerticalThresholdDeg)
             {
-                rb.AddForce(forceFactorObject * strength * Vector3.up, ForceMode.Impulse);
+                rb.AddForce(Mathf.Sign(velocityPitchDeg) * forceFactorObject * strength * Vector3.up, ForceMode.Impulse);
             }
             else
             {
