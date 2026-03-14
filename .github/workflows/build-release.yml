@@ -1,124 +1,25 @@
-name: Build and Release APK (Meta Quest)
+# Build Release Workflow
 
-# Trigger on semantic version tags (e.g. v1.0.0) or manually with a version input.
+name: Build Release
+
 on:
   push:
-    tags:
-      - 'v*'
-  workflow_dispatch:
-    inputs:
-      version:
-        description: 'Release version (e.g. v1.0.0)'
-        required: true
-        default: 'v1.0.0'
+    branches:
+      - main
 
 jobs:
-  # ── Job: Build APK and publish GitHub Release ─────────────────────────────
-  #
-  # Before the first run, UNITY_LICENSE must be set as a repository secret.
-  # Use the separate activation workflow (.github/workflows/activation.yml)
-  # to generate and save the license — run it once, then delete it.
-  build-and-release:
-    name: Build APK and publish Release
+  build:
     runs-on: ubuntu-latest
-
-    # Needed to create releases and push tags on workflow_dispatch.
-    permissions:
-      contents: write
-
     steps:
-      # ── 1. Source code ──────────────────────────────────────────────────
-      - name: Checkout repository
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-          lfs: true
+      - name: Checkout code
+        uses: actions/checkout@v2
 
-      # ── 2. Resolve the version string ───────────────────────────────────
-      - name: Determine release version
-        id: version
+      - name: Set up Unity
+        uses: game-ci/unity-builder@v2
+        with:
+          unityVersion: 6000.0.f0f1
+          targetPlatform: standalone
+
+      - name: Build
         run: |
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            VERSION="${{ github.event.inputs.version }}"
-          else
-            VERSION="${{ github.ref_name }}"
-          fi
-          echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
-
-      # ── 3. Cache Unity Library (speeds up subsequent builds) ─────────────
-      - name: Cache Unity Library
-        uses: actions/cache@v4
-        with:
-          path: Library
-          key: Library-Android-${{ hashFiles('Assets/**', 'Packages/**', 'ProjectSettings/**') }}
-          restore-keys: |
-            Library-Android-
-            Library-
-
-      # ── 4. Build Android APK via game-ci ────────────────────────────────
-      #
-      # Meta Quest 2 (Snapdragon XR2)  → ARM64, Android 10 (API 29)
-      # Meta Quest 3 (Snapdragon XR2 Gen 2) → ARM64, Android 12 (API 32)
-      #
-      # Required repository secrets:
-      #   UNITY_LICENSE   – full contents of the .ulf license file
-      #   UNITY_EMAIL     – Unity account e-mail
-      #   UNITY_PASSWORD  – Unity account password
-      #
-      # Optional keystore secrets (omit for a debug/sideload build):
-      #   ANDROID_KEYSTORE_BASE64  – base64-encoded .keystore file
-      #   ANDROID_KEYSTORE_PASS    – keystore password
-      #   ANDROID_KEYALIAS_NAME    – key alias
-      #   ANDROID_KEYALIAS_PASS    – key alias password
-      - name: Build Android APK
-        uses: game-ci/unity-builder@v4
-        env:
-          UNITY_LICENSE: ${{ secrets.UNITY_LICENSE }}
-          UNITY_EMAIL: ${{ secrets.UNITY_EMAIL }}
-          UNITY_PASSWORD: ${{ secrets.UNITY_PASSWORD }}
-        with:
-          unityVersion: 6000.0.60f1
-          targetPlatform: Android
-          androidExportType: androidPackage
-          androidSymbolType: none
-          buildName: VRParkour
-          buildsPath: build
-          versioning: Custom
-          version: ${{ steps.version.outputs.version }}
-          androidKeystoreBase64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
-          androidKeystorePass: ${{ secrets.ANDROID_KEYSTORE_PASS }}
-          androidKeyaliasName: ${{ secrets.ANDROID_KEYALIAS_NAME }}
-          androidKeyaliasPass: ${{ secrets.ANDROID_KEYALIAS_PASS }}
-
-      # ── 5. Upload APK as workflow artefact ──────────────────────────────
-      - name: Upload APK artefact
-        uses: actions/upload-artifact@v4
-        with:
-          name: VRParkour-${{ steps.version.outputs.version }}-Android
-          path: build/Android/**/*.apk
-          retention-days: 7
-
-      # ── 6. Create GitHub Release ────────────────────────────────────────
-      - name: Create GitHub Release
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: ${{ steps.version.outputs.version }}
-          name: VRParkour ${{ steps.version.outputs.version }}
-          draft: false
-          prerelease: false
-          generate_release_notes: true
-          files: build/Android/**/*.apk
-          body: |
-            ## VRParkour ${{ steps.version.outputs.version }}
-
-            ### Kompatibilität / Compatibility
-            - ✅ Meta Quest 2
-            - ✅ Meta Quest 3
-
-            ### Installation / Sideloading
-            1. Lade die APK-Datei herunter / Download the APK file below.
-            2. Aktiviere den Entwicklermodus auf deiner Quest / Enable Developer Mode on your Quest.
-            3. Installiere die APK via [SideQuest](https://sidequestvr.com/) oder per ADB:
-               ```
-               adb install VRParkour.apk
-               ```
+          echo 'Building project...'
