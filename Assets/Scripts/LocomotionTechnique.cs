@@ -94,7 +94,7 @@ public class LocomotionTechnique : MonoBehaviour
             maxControllerDistance = 1f
         };
 
-        StartCoroutine(TestCoroutine());
+        //StartCoroutine(TestCoroutine());
     }
 
     IEnumerator TestCoroutine()
