@@ -81,11 +81,6 @@ public class MyGrab : MonoBehaviour
         return isMovingBackward;
     }
 
-    private bool IsInvalidStroke(Vector3 controllerVelocityWorld)
-    {
-        return IsInvalidStrokeForController(controller, controllerVelocityWorld);
-    }
-
     Vector3 TransformControllerVelocityToWorld(Vector3 localVelocity)
     {
         EnsureTrackingReference();
@@ -296,6 +291,12 @@ public class MyGrab : MonoBehaviour
         return null;
     }
 
+    float roll = 0f;
+
+    float pitch = 0f;
+
+    float yaw = 0f;
+
     void ApplyWindGust(GameObject target, Vector3 windDirection, float strength)
     {
         // Vertical component in [-1, 1]
@@ -324,7 +325,7 @@ public class MyGrab : MonoBehaviour
         }
 
         // Apply configurable damping so motion settles after each gust.
-        rb.linearDamping = Mathf.Max(0f, dampingFactor+0.1f);
+        rb.linearDamping = Mathf.Max(0f, dampingFactor + 0.1f);
         rb.angularDamping = Mathf.Max(0f, dampingFactor);
 
         // Compute horizontal direction from target to player for player-facing reference frame.
@@ -339,21 +340,21 @@ public class MyGrab : MonoBehaviour
             return;
         }
 
-        Quaternion baseRotation = Quaternion.LookRotation(awayFromPlayer.normalized, Vector3.up);
-        Quaternion targetRotation;
-
-        // If horizontal stroke dominates, roll around the wind axis (away from player).
-        if (Mathf.Abs(horizontalDeg) > Mathf.Abs(velocityPitchDeg))
+       //ROTATE
+        if (IsControllerMovingValid(controller))
         {
-            targetRotation = Quaternion.AngleAxis(-horizontalDeg, awayFromPlayer.normalized) * baseRotation;
-        }
-        else
-        {
-            targetRotation = baseRotation * Quaternion.Euler(90f - velocityPitchDeg, 0f, 0f);
+            if (Mathf.Abs(horizontalDeg) > Mathf.Abs(velocityPitchDeg))
+            {
+                pitch = velocityPitchDeg;
+            }
+            else
+            {
+                roll = -horizontalDeg;
+            }
+
+            ApplyRotation(rb, roll, pitch, yaw);
         }
 
-        float rotateStep = Mathf.Max(1f, strength * 10f);
-        rb.rotation = Quaternion.RotateTowards(rb.rotation, targetRotation, rotateStep);
         if (AreBothControllersMovingValid())
         {
             // Steep pitch drives vertical motion; flatter pitch drives forward (away-from-player) motion.
@@ -379,6 +380,15 @@ public class MyGrab : MonoBehaviour
                 rb.AddForce(forceFactorObject * strength * -viewRight, ForceMode.Impulse);
             }
         }
+    }
+
+    private void ApplyRotation(Rigidbody rb, float roll, float pitch, float yaw)
+    {
+        Quaternion baseRotation = Quaternion.identity;
+        baseRotation *= Quaternion.Euler(0f, 0f, yaw);
+        baseRotation *= Quaternion.Euler(pitch, 0f, 0f);
+        baseRotation *= Quaternion.Euler(0f, roll, 0f);
+        rb.rotation = baseRotation;
     }
 
     void OnTriggerEnter(Collider other)
