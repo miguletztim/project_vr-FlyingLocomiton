@@ -202,6 +202,37 @@ public class MyGrab : MonoBehaviour
             && IsControllerMovingValid(OVRInput.Controller.RTouch);
     }
 
+    private (bool bothMovingRight, bool bothMovingLeft) AreBothControllersMovingSameDirection()
+    {
+        Vector3 leftLocalVelocity = OVRInput.GetLocalControllerVelocity(OVRInput.Controller.LTouch);
+        Vector3 rightLocalVelocity = OVRInput.GetLocalControllerVelocity(OVRInput.Controller.RTouch);
+
+        Vector3 leftWorldVelocity = TransformControllerVelocityToWorld(leftLocalVelocity);
+        Vector3 rightWorldVelocity = TransformControllerVelocityToWorld(rightLocalVelocity);
+
+        if (IsBackwards(leftWorldVelocity) || IsBackwards(rightWorldVelocity))
+        {
+            return (false, false);
+        }
+
+        if (leftWorldVelocity.magnitude < MinValidControllerSpeed || rightWorldVelocity.magnitude < MinValidControllerSpeed)
+        {
+            return (false, false);
+        }
+
+        Vector3 viewRight = Vector3.ProjectOnPlane(Camera.main.transform.right, Vector3.up).normalized;
+        Vector3 leftPlanarVelocity = Vector3.ProjectOnPlane(leftWorldVelocity, Vector3.up);
+        Vector3 rightPlanarVelocity = Vector3.ProjectOnPlane(rightWorldVelocity, Vector3.up);
+
+        float leftLateralDot = Vector3.Dot(leftPlanarVelocity, viewRight);
+        float rightLateralDot = Vector3.Dot(rightPlanarVelocity, viewRight);
+
+        bool bothMovingRight = leftLateralDot > directionDotDeadzone && rightLateralDot > directionDotDeadzone;
+        bool bothMovingLeft = leftLateralDot < -directionDotDeadzone && rightLateralDot < -directionDotDeadzone;
+
+        return (bothMovingRight, bothMovingLeft);
+    }
+
     GameObject FindObjectTBySphereCast(Vector3 origin, Vector3 direction)
     {
         // Probe forward volume to find candidate interactable targets.
@@ -333,6 +364,19 @@ public class MyGrab : MonoBehaviour
             else
             {
                 rb.AddForce(forceFactorObject * strength * awayFromPlayer.normalized, ForceMode.Impulse);
+            }
+        }
+        else
+        {
+            (bool bothMovingRight, bool bothMovingLeft) = AreBothControllersMovingSameDirection();
+
+            if (bothMovingRight)
+            {
+                rb.AddForce(forceFactorObject * strength * viewRight, ForceMode.Impulse);
+            }
+            else if (bothMovingLeft)
+            {
+                rb.AddForce(forceFactorObject * strength * -viewRight, ForceMode.Impulse);
             }
         }
     }
