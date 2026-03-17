@@ -343,6 +343,8 @@ public class MyGrab : MonoBehaviour
        //ROTATE
         if (IsControllerMovingValid(controller))
         {
+            yaw = Quaternion.LookRotation(awayFromPlayer.normalized, Vector3.up).eulerAngles.y;
+        
             if (Mathf.Abs(horizontalDeg) > Mathf.Abs(velocityPitchDeg))
             {
                 pitch = velocityPitchDeg;
@@ -384,6 +386,7 @@ public class MyGrab : MonoBehaviour
 
     private void ApplyRotation(Rigidbody rb, float roll, float pitch, float yaw)
     {
+        rb.rotation = Quaternion.identity;
         Quaternion baseRotation = Quaternion.identity;
         baseRotation *= Quaternion.Euler(0f, 0f, yaw);
         baseRotation *= Quaternion.Euler(pitch, 0f, 0f);
